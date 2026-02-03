@@ -1,47 +1,47 @@
-# BTC/USDT Price Analysis
+# BTC/USDT 价格分析框架
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
 
-A comprehensive quantitative analysis framework for BTC/USDT price dynamics, covering 25 analytical dimensions from statistical distributions to fractal geometry. The framework processes multi-timeframe Binance kline data (1-minute to monthly) spanning 2017-08 to 2026-02, producing reproducible research-grade visualizations and statistical reports.
+一个全面的 BTC/USDT 价格量化分析框架，涵盖 25 个分析维度，从统计分布到分形几何。框架处理 Binance 多时间粒度 K 线数据（1 分钟至月线），时间跨度 2017-08 至 2026-02，生成可复现的研究级可视化图表和统计报告。
 
-## Features
+## 特性
 
-- **Multi-timeframe data pipeline** — 15 granularities from 1m to 1M, unified loader with validation
-- **25 analysis modules** — each module runs independently; single-module failure does not block others
-- **Statistical rigor** — train/validation splits, multiple hypothesis testing corrections, bootstrap confidence intervals
-- **Publication-ready output** — 53 charts with Chinese font support, plus a 1300-line Markdown research report
-- **Modular architecture** — run all modules or cherry-pick via CLI flags
+- **多时间粒度数据管道** — 15 种粒度（1m ~ 1M），统一加载器，含数据校验
+- **25 个分析模块** — 各模块独立运行，单模块失败不影响其余模块
+- **统计严谨性** — 训练/验证集划分、多重假设检验校正、Bootstrap 置信区间
+- **出版级输出** — 53 张图表（支持中文字体）+ 1300 行 Markdown 研究报告
+- **模块化架构** — 可一键运行全部模块，也可通过 CLI 参数选择指定模块
 
-## Project Structure
+## 项目结构
 
 ```
 btc_price_anany/
-├── main.py                 # CLI entry point
-├── requirements.txt        # Python dependencies
-├── LICENSE                 # MIT License
-├── data/                   # 15 BTC/USDT kline CSVs (1m ~ 1M)
-├── src/                    # 30 analysis & utility modules
-│   ├── data_loader.py      # Data loading & validation
-│   ├── preprocessing.py    # Derived feature engineering
-│   ├── font_config.py      # Chinese font rendering
-│   ├── visualization.py    # Summary dashboard generation
-│   └── ...                 # 26 analysis modules
-├── output/                 # Generated charts (53 PNGs)
+├── main.py                 # CLI 入口
+├── requirements.txt        # Python 依赖
+├── LICENSE                 # MIT 许可证
+├── data/                   # 15 个 BTC/USDT K线 CSV（1m ~ 1M）
+├── src/                    # 30 个分析与工具模块
+│   ├── data_loader.py      # 数据加载与校验
+│   ├── preprocessing.py    # 衍生特征工程
+│   ├── font_config.py      # 中文字体渲染
+│   ├── visualization.py    # 综合仪表盘生成
+│   └── ...                 # 26 个分析模块
+├── output/                 # 生成的图表（53 张 PNG）
 ├── docs/
-│   └── REPORT.md           # Full research report with findings
+│   └── REPORT.md           # 完整研究报告
 └── tests/
-    └── test_hurst_15scales.py  # Hurst exponent multi-scale test
+    └── test_hurst_15scales.py  # Hurst 指数多尺度测试
 ```
 
-## Quick Start
+## 快速开始
 
-### Requirements
+### 环境要求
 
 - Python 3.10+
-- ~1 GB disk for kline data
+- 约 1 GB 磁盘空间（K 线数据）
 
-### Installation
+### 安装
 
 ```bash
 git clone https://github.com/riba2534/btc_price_anany.git
@@ -49,85 +49,85 @@ cd btc_price_anany
 pip install -r requirements.txt
 ```
 
-### Usage
+### 使用
 
 ```bash
-# Run all 25 analysis modules
+# 运行全部 25 个分析模块
 python main.py
 
-# List available modules
+# 查看可用模块列表
 python main.py --list
 
-# Run specific modules
+# 运行指定模块
 python main.py --modules fft wavelet hurst
 
-# Limit date range
+# 限定日期范围
 python main.py --start 2020-01-01 --end 2025-12-31
 ```
 
-## Data
+## 数据说明
 
-| File | Timeframe | Rows (approx.) |
-|------|-----------|-----------------|
-| `btcusdt_1m.csv` | 1 minute | ~4,500,000 |
-| `btcusdt_3m.csv` | 3 minutes | ~1,500,000 |
-| `btcusdt_5m.csv` | 5 minutes | ~900,000 |
-| `btcusdt_15m.csv` | 15 minutes | ~300,000 |
-| `btcusdt_30m.csv` | 30 minutes | ~150,000 |
-| `btcusdt_1h.csv` | 1 hour | ~75,000 |
-| `btcusdt_2h.csv` | 2 hours | ~37,000 |
-| `btcusdt_4h.csv` | 4 hours | ~19,000 |
-| `btcusdt_6h.csv` | 6 hours | ~12,500 |
-| `btcusdt_8h.csv` | 8 hours | ~9,500 |
-| `btcusdt_12h.csv` | 12 hours | ~6,300 |
-| `btcusdt_1d.csv` | 1 day | ~3,100 |
-| `btcusdt_3d.csv` | 3 days | ~1,000 |
-| `btcusdt_1w.csv` | 1 week | ~450 |
-| `btcusdt_1mo.csv` | 1 month | ~100 |
+| 文件 | 时间粒度 | 行数（约） |
+|------|---------|-----------|
+| `btcusdt_1m.csv` | 1 分钟 | ~4,500,000 |
+| `btcusdt_3m.csv` | 3 分钟 | ~1,500,000 |
+| `btcusdt_5m.csv` | 5 分钟 | ~900,000 |
+| `btcusdt_15m.csv` | 15 分钟 | ~300,000 |
+| `btcusdt_30m.csv` | 30 分钟 | ~150,000 |
+| `btcusdt_1h.csv` | 1 小时 | ~75,000 |
+| `btcusdt_2h.csv` | 2 小时 | ~37,000 |
+| `btcusdt_4h.csv` | 4 小时 | ~19,000 |
+| `btcusdt_6h.csv` | 6 小时 | ~12,500 |
+| `btcusdt_8h.csv` | 8 小时 | ~9,500 |
+| `btcusdt_12h.csv` | 12 小时 | ~6,300 |
+| `btcusdt_1d.csv` | 1 天 | ~3,100 |
+| `btcusdt_3d.csv` | 3 天 | ~1,000 |
+| `btcusdt_1w.csv` | 1 周 | ~450 |
+| `btcusdt_1mo.csv` | 1 月 | ~100 |
 
-All data sourced from Binance public API, covering 2017-08 to 2026-02.
+全部数据来源于 Binance 公开 API，时间范围 2017-08 至 2026-02。
 
-## Analysis Modules
+## 分析模块
 
-| Module | Description |
-|--------|-------------|
-| `fft` | FFT power spectrum, multi-timeframe spectral analysis, bandpass filtering |
-| `wavelet` | Continuous wavelet transform scalogram, global spectrum, key period tracking |
-| `acf` | ACF/PACF grid analysis for autocorrelation structure |
-| `returns` | Return distribution fitting, QQ plots, multi-scale moment analysis |
-| `volatility` | Volatility clustering, GARCH modeling, leverage effect quantification |
-| `hurst` | R/S and DFA Hurst exponent estimation, rolling window analysis |
-| `fractal` | Box-counting dimension, Monte Carlo benchmarking, self-similarity tests |
-| `power_law` | Log-log regression, power-law growth corridor, model comparison |
-| `volume_price` | Volume-return scatter analysis, OBV divergence detection |
-| `calendar` | Weekday, month, hour, and quarter-boundary effects |
-| `halving` | Halving cycle analysis with normalized trajectory comparison |
-| `indicators` | Technical indicator IC testing with train/validation split |
-| `patterns` | K-line pattern recognition with forward-return validation |
-| `clustering` | Market regime clustering (K-Means, GMM) with transition matrices |
-| `time_series` | ARIMA, Prophet, LSTM forecasting with direction accuracy |
-| `causality` | Granger causality testing across volume and price features |
-| `anomaly` | Anomaly detection with precursor feature analysis |
-| `microstructure` | Market microstructure: spreads, Kyle's lambda, VPIN |
-| `intraday` | Intraday session patterns and volume heatmaps |
-| `scaling` | Statistical scaling laws and kurtosis decay |
-| `multiscale_vol` | HAR volatility, jump detection, higher moment analysis |
-| `entropy` | Sample entropy and permutation entropy across scales |
-| `extreme` | Extreme value theory: Hill estimator, VaR backtesting |
-| `cross_tf` | Cross-timeframe correlation and lead-lag analysis |
-| `momentum_rev` | Momentum vs mean-reversion: variance ratios, OU half-life |
+| 模块 | 说明 |
+|------|------|
+| `fft` | FFT 功率谱、多时间粒度频谱分析、带通滤波 |
+| `wavelet` | 连续小波变换时频图、全局谱、关键周期追踪 |
+| `acf` | ACF/PACF 网格分析，自相关结构识别 |
+| `returns` | 收益率分布拟合、QQ 图、多尺度矩分析 |
+| `volatility` | 波动率聚集、GARCH 建模、杠杆效应量化 |
+| `hurst` | R/S 和 DFA Hurst 指数估计、滚动窗口分析 |
+| `fractal` | 盒计数维度、Monte Carlo 基准、自相似性检验 |
+| `power_law` | 双对数回归、幂律增长通道、模型比较 |
+| `volume_price` | 量价散点分析、OBV 背离检测 |
+| `calendar` | 星期、月份、小时、季度边界效应 |
+| `halving` | 减半周期分析与归一化轨迹对比 |
+| `indicators` | 技术指标 IC 检验（训练/验证集划分） |
+| `patterns` | K 线形态识别与前瞻收益验证 |
+| `clustering` | 市场状态聚类（K-Means、GMM）与转移矩阵 |
+| `time_series` | ARIMA、Prophet、LSTM 预测与方向准确率 |
+| `causality` | 量价特征间 Granger 因果检验 |
+| `anomaly` | 异常检测与前兆特征分析 |
+| `microstructure` | 市场微观结构：价差、Kyle's lambda、VPIN |
+| `intraday` | 日内交易时段模式与成交量热力图 |
+| `scaling` | 统计标度律与峰度衰减 |
+| `multiscale_vol` | HAR 波动率、跳跃检测、高阶矩分析 |
+| `entropy` | 样本熵与排列熵的多尺度分析 |
+| `extreme` | 极端值理论：Hill 估计量、VaR 回测 |
+| `cross_tf` | 跨时间粒度相关性与领先滞后分析 |
+| `momentum_rev` | 动量 vs 均值回归：方差比率、OU 半衰期 |
 
-## Key Findings
+## 核心发现
 
-The full analysis report is available at [`docs/REPORT.md`](docs/REPORT.md). Major conclusions include:
+完整分析报告见 [`docs/REPORT.md`](docs/REPORT.md)，主要结论包括：
 
-- **Non-Gaussian returns**: BTC daily returns exhibit significant fat tails (kurtosis ~10) and are best fit by Student-t distributions, not Gaussian
-- **Volatility clustering**: Strong GARCH effects with long memory (d ≈ 0.4), confirming volatility persistence across time scales
-- **Hurst exponent H ≈ 0.55**: Weak but statistically significant long-range dependence, transitioning from trending (short-term) to mean-reverting (long-term)
-- **Fractal dimension D ≈ 1.4**: Price series is rougher than Brownian motion, exhibiting multi-fractal characteristics
-- **Halving cycle impact**: Statistically significant post-halving bull runs with diminishing returns per cycle
-- **Calendar effects**: Weak but detectable weekday and monthly seasonality; no exploitable intraday patterns survive transaction costs
+- **非高斯收益率**：BTC 日收益率呈现显著厚尾（峰度 ~10），Student-t 分布拟合最优，而非高斯分布
+- **波动率聚集**：强 GARCH 效应，具有长记忆特征（d ≈ 0.4），波动率持续性跨时间尺度成立
+- **Hurst 指数 H ≈ 0.55**：弱但统计显著的长程依赖，短期趋势性向长期均值回归过渡
+- **分形维度 D ≈ 1.4**：价格序列比布朗运动更粗糙，呈现多重分形特征
+- **减半周期效应**：减半后牛市统计显著，但每轮周期收益递减
+- **日历效应**：可检测到微弱的星期和月度季节性；日内模式在扣除交易成本后不具可利用性
 
-## License
+## 许可证
 
-This project is licensed under the [MIT License](LICENSE).
+本项目基于 [MIT 许可证](LICENSE) 开源。
