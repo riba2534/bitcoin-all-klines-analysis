@@ -30,6 +30,9 @@ htmlcov/
 # Jupyter
 .ipynb_checkpoints/
 
+# Data files (download from Binance, see README)
+data/
+
 # Runtime generated output (tracked baseline images are in output/)
 output/all_results.json
 output/evidence_dashboard.png

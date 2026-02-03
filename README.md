@@ -87,6 +87,12 @@ python main.py --start 2020-01-01 --end 2025-12-31
 
 全部数据来源于 Binance 公开 API，时间范围 2017-08 至 2026-02。
 
+> **数据未包含在仓库中**，请从 Binance 官方数据源下载后放入 `data/` 目录：
+>
+> - K 线数据下载页面：<https://data.binance.vision/?prefix=data/spot/daily/klines/BTCUSDT/1m/>
+> - 将 URL 中的 `1m` 替换为所需粒度（`3m`、`5m`、`15m`、`30m`、`1h`、`2h`、`4h`、`6h`、`8h`、`12h`、`1d`、`3d`、`1w`、`1mo`）即可下载对应时间粒度的数据
+> - 下载后合并为单个 CSV 文件，命名格式：`btcusdt_{interval}.csv`，放入 `data/` 目录
+
 ## 分析模块
 
 | 模块 | 说明 |
