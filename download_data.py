@@ -2,9 +2,11 @@
 """
 BTC/USDT K线数据下载脚本
 
-从 Binance 公开 API 下载全部 15 个时间粒度的历史 K 线数据。
-数据范围：2017-08-17（BTCUSDT 上线日）至今。
-支持断点续传：已下载的数据不会重复拉取。
+从 Binance 公开数据下载站 (data.binance.vision) 批量下载全部 15 个时间粒度的历史 K 线数据。
+相比 API 逐页拉取，zip 批量下载速度快数十倍。
+
+数据范围：2017-08（BTCUSDT 上线月）至今。
+支持断点续传：已下载的 zip 文件不会重复拉取。
 
 用法：
     python download_data.py                  # 下载全部 15 个粒度
@@ -13,33 +15,34 @@ BTC/USDT K线数据下载脚本
 """
 
 import csv
+import io
 import sys
 import time
-import requests
-from datetime import datetime, timezone
+import zipfile
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+import requests
 
 # ============================================================
 # 配置
 # ============================================================
 
 SYMBOL = "BTCUSDT"
-BASE_URL = "https://api.binance.com/api/v3/klines"
-LIMIT = 1000  # 每次请求最大行数
+BASE_URL = "https://data.binance.vision/data/spot"
+MAX_WORKERS = 10  # 并发下载线程数
 
-# BTCUSDT 上线时间
-START_MS = int(datetime(2017, 8, 17, tzinfo=timezone.utc).timestamp() * 1000)
+# BTCUSDT 上线月份
+START_YEAR = 2017
+START_MONTH = 8
 
-# 全部 15 个粒度（API 参数值）
+# 全部 15 个粒度（与 data.binance.vision 路径一致）
 ALL_INTERVALS = [
     "1m", "3m", "5m", "15m", "30m",
     "1h", "2h", "4h", "6h", "8h", "12h",
-    "1d", "3d", "1w", "1M",
+    "1d", "3d", "1w", "1mo",
 ]
-
-# API interval → 本地文件名中的粒度标识
-INTERVAL_TO_FILENAME = {i: i for i in ALL_INTERVALS}
-INTERVAL_TO_FILENAME["1M"] = "1mo"  # Binance API 用 '1M'，项目文件用 '1mo'
 
 # CSV 表头，与 src/data_loader.py 期望的列名一致
 CSV_HEADER = [
@@ -50,140 +53,145 @@ CSV_HEADER = [
 
 
 # ============================================================
-# 下载逻辑
+# URL 生成
 # ============================================================
 
-def get_last_timestamp(filepath: Path) -> int | None:
-    """读取已有 CSV 最后一行的 close_time，用于断点续传。"""
-    if not filepath.exists() or filepath.stat().st_size == 0:
-        return None
-    last_line = ""
-    with open(filepath, "rb") as f:
-        # 从文件末尾向前查找最后一行
-        f.seek(0, 2)
-        pos = f.tell()
-        while pos > 0:
-            pos -= 1
-            f.seek(pos)
-            ch = f.read(1)
-            if ch == b"\n" and pos < f.tell() - 1:
-                last_line = f.readline().decode().strip()
-                break
-        if not last_line:
-            f.seek(0)
-            for line in f:
-                last_line = line.decode().strip()
-    if not last_line or last_line.startswith("open_time"):
-        return None
+def generate_monthly_urls(interval: str) -> list[tuple[str, str]]:
+    """生成所有月度 zip 文件的 (URL, 文件名) 列表。"""
+    now = datetime.now(timezone.utc)
+    urls = []
+    year, month = START_YEAR, START_MONTH
+    # 月度文件覆盖到上个月（当月数据用日度文件补全）
+    while (year, month) < (now.year, now.month):
+        filename = f"{SYMBOL}-{interval}-{year}-{month:02d}.zip"
+        url = f"{BASE_URL}/monthly/klines/{SYMBOL}/{interval}/{filename}"
+        urls.append((url, filename))
+        month += 1
+        if month > 12:
+            month = 1
+            year += 1
+    return urls
+
+
+def generate_daily_urls(interval: str) -> list[tuple[str, str]]:
+    """生成当月每日 zip 文件的 (URL, 文件名) 列表。"""
+    now = datetime.now(timezone.utc)
+    urls = []
+    day = datetime(now.year, now.month, 1, tzinfo=timezone.utc)
+    # 日度数据最多到昨天
+    yesterday = now - timedelta(days=1)
+    while day.date() <= yesterday.date():
+        date_str = day.strftime("%Y-%m-%d")
+        filename = f"{SYMBOL}-{interval}-{date_str}.zip"
+        url = f"{BASE_URL}/daily/klines/{SYMBOL}/{interval}/{filename}"
+        urls.append((url, filename))
+        day += timedelta(days=1)
+    return urls
+
+
+# ============================================================
+# 下载与解压
+# ============================================================
+
+def download_zip(url: str, cache_dir: Path, filename: str) -> Path | None:
+    """下载单个 zip 文件，已存在则跳过。"""
+    filepath = cache_dir / filename
+    if filepath.exists() and filepath.stat().st_size > 0:
+        return filepath
     try:
-        close_time = int(last_line.split(",")[6])
-        return close_time
-    except (IndexError, ValueError):
+        resp = requests.get(url, timeout=60)
+        if resp.status_code == 404:
+            return None
+        resp.raise_for_status()
+        filepath.write_bytes(resp.content)
+        return filepath
+    except requests.exceptions.RequestException:
         return None
 
 
-def count_lines(filepath: Path) -> int:
-    """快速统计 CSV 数据行数（不含表头）。"""
-    if not filepath.exists():
+def extract_csv_rows(zip_path: Path) -> list[list[str]]:
+    """从 zip 中提取 CSV 数据行（跳过表头行）。"""
+    rows = []
+    try:
+        with zipfile.ZipFile(zip_path) as zf:
+            for name in zf.namelist():
+                if name.endswith(".csv"):
+                    with zf.open(name) as f:
+                        reader = csv.reader(io.TextIOWrapper(f, encoding="utf-8"))
+                        for row in reader:
+                            # 跳过表头或空行
+                            if row and not row[0].startswith("open"):
+                                rows.append(row)
+    except (zipfile.BadZipFile, Exception) as e:
+        print(f"\n  [解压失败] {zip_path.name}: {e}")
+    return rows
+
+
+# ============================================================
+# 核心流程
+# ============================================================
+
+def download_interval(interval: str, output_dir: Path, cache_dir: Path) -> int:
+    """下载并合并单个粒度的全量数据，返回总行数。"""
+    filepath = output_dir / f"btcusdt_{interval}.csv"
+    interval_cache = cache_dir / interval
+    interval_cache.mkdir(parents=True, exist_ok=True)
+
+    # 生成 URL 列表
+    monthly_urls = generate_monthly_urls(interval)
+    daily_urls = generate_daily_urls(interval)
+    all_urls = monthly_urls + daily_urls
+
+    if not all_urls:
+        print("  无可下载文件")
         return 0
-    with open(filepath, "rb") as f:
-        count = sum(1 for _ in f) - 1  # 减去表头
-    return max(0, count)
 
+    print(f"  共 {len(all_urls)} 个文件 "
+          f"({len(monthly_urls)} 月度 + {len(daily_urls)} 日度)")
 
-def download_interval(interval: str, output_dir: Path) -> int:
-    """下载单个粒度的全量 K 线数据，返回最终行数。"""
-    tag = INTERVAL_TO_FILENAME[interval]
-    filepath = output_dir / f"btcusdt_{tag}.csv"
+    # 并发下载
+    downloaded = []
+    failed = 0
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
+        futures = {
+            pool.submit(download_zip, url, interval_cache, fname): fname
+            for url, fname in all_urls
+        }
+        for i, future in enumerate(as_completed(futures), 1):
+            result = future.result()
+            if result:
+                downloaded.append(result)
+            else:
+                failed += 1
+            if i % 20 == 0 or i == len(futures):
+                print(f"\r  下载: {i}/{len(futures)} "
+                      f"(成功 {len(downloaded)}, 跳过 {failed})",
+                      end="", flush=True)
 
-    existing_rows = count_lines(filepath)
-    last_ts = get_last_timestamp(filepath)
+    print()
 
-    if last_ts is not None:
-        start_time = last_ts + 1
-        print(f"  断点续传: 已有 {existing_rows:,} 行，"
-              f"从 {ms_to_date(start_time)} 继续")
-    else:
-        start_time = START_MS
+    if not downloaded:
+        print("  无有效数据")
+        return 0
 
-    now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
-    if start_time >= now_ms:
-        print(f"  已是最新数据，跳过")
-        return existing_rows
+    # 按文件名排序保证时间顺序
+    downloaded.sort(key=lambda p: p.name)
 
-    # 写入模式：续传用 append，否则新建
-    mode = "a" if existing_rows > 0 else "w"
-    new_rows = 0
-    retries = 0
-    max_retries = 10
-
-    with open(filepath, mode, newline="") as f:
+    # 解压并合并写入 CSV
+    print("  合并数据...", end="", flush=True)
+    total_rows = 0
+    with open(filepath, "w", newline="") as f:
         writer = csv.writer(f)
-        if existing_rows == 0:
-            writer.writerow(CSV_HEADER)
+        writer.writerow(CSV_HEADER)
 
-        current = start_time
-        while current < now_ms:
-            params = {
-                "symbol": SYMBOL,
-                "interval": interval,
-                "startTime": current,
-                "limit": LIMIT,
-            }
-            try:
-                resp = requests.get(BASE_URL, params=params, timeout=30)
+        for zip_path in downloaded:
+            rows = extract_csv_rows(zip_path)
+            for row in rows:
+                writer.writerow(row)
+            total_rows += len(rows)
 
-                if resp.status_code == 429:
-                    wait = int(resp.headers.get("Retry-After", 60))
-                    print(f"\n  [限频] 等待 {wait}s...")
-                    time.sleep(wait)
-                    continue
-                if resp.status_code == 418:
-                    print(f"\n  [IP 封禁] 等待 120s...")
-                    time.sleep(120)
-                    continue
-
-                resp.raise_for_status()
-                data = resp.json()
-
-                if not data:
-                    break
-
-                for row in data:
-                    writer.writerow(row)
-                new_rows += len(data)
-
-                # 下一批起始点
-                current = data[-1][6] + 1  # last close_time + 1
-
-                # 进度
-                total = existing_rows + new_rows
-                pct = min(100, (current - START_MS) / max(1, now_ms - START_MS) * 100)
-                print(f"\r  {ms_to_date(current)} | "
-                      f"{total:>10,} 行 | {pct:5.1f}%", end="", flush=True)
-
-                retries = 0
-                time.sleep(0.05)
-
-            except KeyboardInterrupt:
-                print(f"\n  [中断] 已保存 {existing_rows + new_rows:,} 行")
-                return existing_rows + new_rows
-            except requests.exceptions.RequestException as e:
-                retries += 1
-                if retries > max_retries:
-                    print(f"\n  [失败] 连续 {max_retries} 次错误，中止: {e}")
-                    break
-                wait = min(2 ** retries, 60)
-                print(f"\n  [重试 {retries}/{max_retries}] {wait}s 后: {e}")
-                time.sleep(wait)
-
-    total = existing_rows + new_rows
-    print(f"\n  完成: +{new_rows:,} 行，共 {total:,} 行 → {filepath.name}")
-    return total
-
-
-def ms_to_date(ms: int) -> str:
-    return datetime.fromtimestamp(ms / 1000, tz=timezone.utc).strftime("%Y-%m-%d")
+    print(f"\r  完成: {total_rows:,} 行 -> {filepath.name}")
+    return total_rows
 
 
 # ============================================================
@@ -191,11 +199,11 @@ def ms_to_date(ms: int) -> str:
 # ============================================================
 
 def parse_interval(arg: str) -> str:
-    """将用户输入的粒度标识映射为 Binance API interval。"""
+    """将用户输入映射为下载站的 interval 标识。"""
     s = arg.strip().lower()
-    # 处理 '1mo' → '1M'
-    if s == "1mo":
-        return "1M"
+    # 兼容旧的 '1M' 写法
+    if s == "1m" and arg.strip() == "1M":
+        return "1mo"
     for iv in ALL_INTERVALS:
         if iv.lower() == s:
             return iv
@@ -204,58 +212,58 @@ def parse_interval(arg: str) -> str:
 
 def main():
     output_dir = Path(__file__).resolve().parent / "data"
+    cache_dir = output_dir / ".cache"
     output_dir.mkdir(exist_ok=True)
+    cache_dir.mkdir(exist_ok=True)
 
     # --list 模式
     if "--list" in sys.argv:
         print("可用粒度:")
         for iv in ALL_INTERVALS:
-            tag = INTERVAL_TO_FILENAME[iv]
-            print(f"  {tag:5s}  (API: {iv})")
+            print(f"  {iv}")
         return
 
     # 解析参数
-    if len(sys.argv) > 1:
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    if args:
         intervals = []
-        for arg in sys.argv[1:]:
+        for arg in args:
             iv = parse_interval(arg)
             if not iv:
                 print(f"未知粒度: {arg}")
-                tags = [INTERVAL_TO_FILENAME[i] for i in ALL_INTERVALS]
-                print(f"可选: {', '.join(tags)}")
+                print(f"可选: {', '.join(ALL_INTERVALS)}")
                 sys.exit(1)
             intervals.append(iv)
     else:
         intervals = list(ALL_INTERVALS)
 
-    tags = [INTERVAL_TO_FILENAME[i] for i in intervals]
     print("=" * 60)
-    print(f"BTC/USDT K 线数据下载")
-    print(f"=" * 60)
+    print("BTC/USDT K 线数据下载 (data.binance.vision)")
+    print("=" * 60)
     print(f"交易对:  {SYMBOL}")
-    print(f"粒度:    {', '.join(tags)}")
-    print(f"起始日:  {ms_to_date(START_MS)}")
+    print(f"粒度:    {', '.join(intervals)}")
+    print(f"起始月:  {START_YEAR}-{START_MONTH:02d}")
+    print(f"并发数:  {MAX_WORKERS}")
+    print(f"缓存目录: {cache_dir}")
     print(f"输出目录: {output_dir}")
-    print(f"依赖:    pip install requests")
     print("=" * 60)
 
     results = {}
     t0 = time.time()
 
     for i, interval in enumerate(intervals, 1):
-        tag = INTERVAL_TO_FILENAME[interval]
-        print(f"\n[{i}/{len(intervals)}] {tag}")
-        rows = download_interval(interval, output_dir)
-        results[tag] = rows
+        print(f"\n[{i}/{len(intervals)}] {interval}")
+        rows = download_interval(interval, output_dir, cache_dir)
+        results[interval] = rows
 
     elapsed = time.time() - t0
     m, s = divmod(int(elapsed), 60)
 
     print(f"\n{'=' * 60}")
     print(f"全部完成（耗时 {m}m{s}s）：")
-    print(f"{'=' * 60}")
+    print("=" * 60)
     for tag, rows in results.items():
-        print(f"  {tag:5s} → {rows:>10,} 行")
+        print(f"  {tag:5s} -> {rows:>12,} 行")
     print(f"\n数据目录: {output_dir}")
 
 
