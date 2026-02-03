@@ -29,3 +29,11 @@ htmlcov/
 
 # Jupyter
 .ipynb_checkpoints/
+
+# Runtime generated output (tracked baseline images are in output/)
+output/all_results.json
+output/evidence_dashboard.png
+output/综合结论报告.txt
+output/hurst_test/
+*.tmp
+*.bak
