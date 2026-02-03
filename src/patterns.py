@@ -18,7 +18,7 @@ from scipy import stats
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 
-from src.data_loader import split_data
+from src.data_loader import split_data, load_klines
 
 
 # ============================================================
@@ -668,7 +668,275 @@ def plot_hit_rate_with_ci(results_df: pd.DataFrame, output_dir: Path, prefix: st
 
 
 # ============================================================
-# 6. 主流程
+# 6. 多时间尺度形态分析
+# ============================================================
+
+def multi_timeframe_pattern_analysis(intervals=None) -> Dict:
+    """多时间尺度形态识别与对比"""
+    if intervals is None:
+        intervals = ['1h', '4h', '1d']
+
+    results = {}
+    for interval in intervals:
+        try:
+            print(f"\n  加载 {interval} 数据进行形态识别...")
+            df_tf = load_klines(interval)
+
+            if len(df_tf) < 100:
+                print(f"    {interval} 数据不足，跳过")
+                continue
+
+            # 检测所有形态
+            patterns = detect_all_patterns(df_tf)
+
+            # 计算前向收益
+            close = df_tf['close']
+            fwd_returns = calc_forward_returns_multi(close, horizons=[1, 3, 5])
+
+            # 评估每个形态
+            pattern_stats = {}
+            for name, signal in patterns.items():
+                n_occ = signal.sum() if hasattr(signal, 'sum') else (signal > 0).sum()
+                expected_dir = PATTERN_EXPECTED_DIRECTION.get(name, 0)
+
+                if n_occ >= 5:
+                    result = analyze_pattern_returns(signal, fwd_returns, expected_dir)
+                    pattern_stats[name] = {
+                        'n_occurrences': int(n_occ),
+                        'hit_rate': result.get('hit_rate', np.nan),
+                    }
+                else:
+                    pattern_stats[name] = {
+                        'n_occurrences': int(n_occ),
+                        'hit_rate': np.nan,
+                    }
+
+            results[interval] = pattern_stats
+            print(f"    {interval}: {sum(1 for v in pattern_stats.values() if v['n_occurrences'] > 0)} 种形态检测到")
+
+        except FileNotFoundError:
+            print(f"    {interval} 数据文件不存在，跳过")
+        except Exception as e:
+            print(f"    {interval} 分析失败: {e}")
+
+    return results
+
+
+def cross_scale_pattern_consistency(intervals=None) -> Dict:
+    """
+    跨尺度形态一致性分析
+    检查同一日期多个尺度是否同时出现相同方向的形态
+
+    返回:
+        包含一致性统计的字典
+    """
+    if intervals is None:
+        intervals = ['1h', '4h', '1d']
+
+    # 加载所有时间尺度数据
+    dfs = {}
+    for interval in intervals:
+        try:
+            df = load_klines(interval)
+            if len(df) >= 100:
+                dfs[interval] = df
+        except:
+            continue
+
+    if len(dfs) < 2:
+        print("  跨尺度分析需要至少2个时间尺度的数据")
+        return {}
+
+    # 检测每个尺度的形态
+    patterns_by_tf = {}
+    for interval, df in dfs.items():
+        patterns_by_tf[interval] = detect_all_patterns(df)
+
+    # 统计跨尺度一致性
+    consistency_stats = {}
+
+    # 对每种形态，检查在同一日期的不同尺度上是否同时出现
+    all_pattern_names = set()
+    for patterns in patterns_by_tf.values():
+        all_pattern_names.update(patterns.keys())
+
+    for pattern_name in all_pattern_names:
+        expected_dir = PATTERN_EXPECTED_DIRECTION.get(pattern_name, 0)
+        if expected_dir == 0:  # 跳过中性形态
+            continue
+
+        # 找出所有尺度上该形态出现的日期
+        occurrences_by_tf = {}
+        for interval, patterns in patterns_by_tf.items():
+            if pattern_name in patterns:
+                signal = patterns[pattern_name]
+                # 转换为日期（忽略时间）
+                dates = signal[signal > 0].index.date if hasattr(signal.index, 'date') else signal[signal > 0].index
+                occurrences_by_tf[interval] = set(dates)
+
+        if len(occurrences_by_tf) < 2:
+            continue
+
+        # 计算交集（同时出现在多个尺度的日期数）
+        all_dates = set()
+        for dates in occurrences_by_tf.values():
+            all_dates.update(dates)
+
+        # 统计每个日期在多少个尺度上出现
+        date_counts = {}
+        for date in all_dates:
+            count = sum(1 for dates in occurrences_by_tf.values() if date in dates)
+            date_counts[date] = count
+
+        # 计算一致性指标
+        total_occurrences = sum(len(dates) for dates in occurrences_by_tf.values())
+        multi_scale_occurrences = sum(1 for count in date_counts.values() if count >= 2)
+
+        consistency_stats[pattern_name] = {
+            'total_occurrences': total_occurrences,
+            'multi_scale_occurrences': multi_scale_occurrences,
+            'consistency_rate': multi_scale_occurrences / total_occurrences if total_occurrences > 0 else 0,
+            'scales_available': len(occurrences_by_tf),
+        }
+
+    return consistency_stats
+
+
+def plot_multi_timeframe_hit_rates(mt_results: Dict, output_dir: Path):
+    """多尺度形态命中率对比图"""
+    if not mt_results:
+        return
+
+    # 收集所有形态名称
+    all_patterns = set()
+    for tf_stats in mt_results.values():
+        all_patterns.update(tf_stats.keys())
+
+    # 筛选至少在一个尺度上有足够样本的形态
+    valid_patterns = []
+    for pattern in all_patterns:
+        has_valid_data = False
+        for tf_stats in mt_results.values():
+            if pattern in tf_stats and tf_stats[pattern]['n_occurrences'] >= 5:
+                if not np.isnan(tf_stats[pattern].get('hit_rate', np.nan)):
+                    has_valid_data = True
+                    break
+        if has_valid_data:
+            valid_patterns.append(pattern)
+
+    if not valid_patterns:
+        print("  没有足够的数据绘制多尺度命中率对比图")
+        return
+
+    # 准备绘图数据
+    intervals = sorted(mt_results.keys())
+    n_intervals = len(intervals)
+    n_patterns = len(valid_patterns)
+
+    fig, ax = plt.subplots(figsize=(max(12, n_patterns * 0.8), 8))
+
+    x = np.arange(n_patterns)
+    width = 0.8 / n_intervals
+
+    colors = ['#3498db', '#e74c3c', '#2ecc71', '#f39c12', '#9b59b6']
+
+    for i, interval in enumerate(intervals):
+        hit_rates = []
+        for pattern in valid_patterns:
+            if pattern in mt_results[interval]:
+                hr = mt_results[interval][pattern].get('hit_rate', np.nan)
+            else:
+                hr = np.nan
+            hit_rates.append(hr)
+
+        offset = (i - n_intervals / 2 + 0.5) * width
+        bars = ax.bar(x + offset, hit_rates, width, label=interval,
+                     color=colors[i % len(colors)], alpha=0.8, edgecolor='gray', linewidth=0.5)
+
+        # 标注数值
+        for j, (bar, hr) in enumerate(zip(bars, hit_rates)):
+            if not np.isnan(hr) and bar.get_height() > 0:
+                ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.01,
+                       f'{hr:.1%}', ha='center', va='bottom', fontsize=6, rotation=0)
+
+    ax.axhline(y=0.5, color='red', linestyle='--', linewidth=1.0, alpha=0.7, label='50% baseline')
+    ax.set_xlabel('形态名称', fontsize=11)
+    ax.set_ylabel('命中率', fontsize=11)
+    ax.set_title('多时间尺度形态命中率对比', fontsize=13, fontweight='bold')
+    ax.set_xticks(x)
+    ax.set_xticklabels(valid_patterns, rotation=45, ha='right', fontsize=8)
+    ax.legend(fontsize=9, loc='best')
+    ax.set_ylim(0, 1)
+    ax.grid(axis='y', alpha=0.3, linestyle='--')
+
+    plt.tight_layout()
+    fig.savefig(output_dir / "pattern_multi_timeframe_hitrate.png", dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    print(f"  [saved] pattern_multi_timeframe_hitrate.png")
+
+
+def plot_cross_scale_consistency(consistency_stats: Dict, output_dir: Path):
+    """展示跨尺度形态一致性统计"""
+    if not consistency_stats:
+        print("  没有跨尺度一致性数据可绘制")
+        return
+
+    # 筛选有效数据
+    valid_stats = {k: v for k, v in consistency_stats.items() if v['total_occurrences'] >= 10}
+    if not valid_stats:
+        print("  没有足够的数据绘制跨尺度一致性图")
+        return
+
+    # 按一致性率排序
+    sorted_patterns = sorted(valid_stats.items(), key=lambda x: x[1]['consistency_rate'], reverse=True)
+
+    names = [name for name, _ in sorted_patterns]
+    consistency_rates = [stats['consistency_rate'] for _, stats in sorted_patterns]
+    multi_scale_counts = [stats['multi_scale_occurrences'] for _, stats in sorted_patterns]
+    total_counts = [stats['total_occurrences'] for _, stats in sorted_patterns]
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, max(6, len(names) * 0.4)))
+
+    # 左图：一致性率
+    y_pos = range(len(names))
+    colors = ['#2ecc71' if rate > 0.3 else '#e74c3c' for rate in consistency_rates]
+    bars1 = ax1.barh(y_pos, consistency_rates, color=colors, edgecolor='gray', linewidth=0.5, alpha=0.8)
+
+    for i, (bar, rate, multi, total) in enumerate(zip(bars1, consistency_rates, multi_scale_counts, total_counts)):
+        ax1.text(bar.get_width() + 0.01, i, f'{rate:.1%}\n({multi}/{total})',
+                va='center', fontsize=7)
+
+    ax1.set_yticks(y_pos)
+    ax1.set_yticklabels(names, fontsize=9)
+    ax1.set_xlabel('跨尺度一致性率', fontsize=11)
+    ax1.set_title('形态跨尺度一致性率\n(同一日期出现在多个时间尺度的比例)', fontsize=12, fontweight='bold')
+    ax1.set_xlim(0, 1)
+    ax1.axvline(x=0.3, color='blue', linestyle='--', linewidth=0.8, alpha=0.5, label='30% threshold')
+    ax1.legend(fontsize=8)
+    ax1.grid(axis='x', alpha=0.3, linestyle='--')
+
+    # 右图：出现次数对比
+    width = 0.35
+    x_pos = np.arange(len(names))
+
+    bars2 = ax2.barh(x_pos, total_counts, width, label='总出现次数', color='#3498db', alpha=0.7)
+    bars3 = ax2.barh(x_pos + width, multi_scale_counts, width, label='多尺度出现次数', color='#e67e22', alpha=0.7)
+
+    ax2.set_yticks(x_pos + width / 2)
+    ax2.set_yticklabels(names, fontsize=9)
+    ax2.set_xlabel('出现次数', fontsize=11)
+    ax2.set_title('形态出现次数统计', fontsize=12, fontweight='bold')
+    ax2.legend(fontsize=9)
+    ax2.grid(axis='x', alpha=0.3, linestyle='--')
+
+    plt.tight_layout()
+    fig.savefig(output_dir / "pattern_cross_scale_consistency.png", dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    print(f"  [saved] pattern_cross_scale_consistency.png")
+
+
+# ============================================================
+# 7. 主流程
 # ============================================================
 
 def evaluate_patterns_on_set(df: pd.DataFrame, patterns: Dict[str, pd.Series],
@@ -843,6 +1111,27 @@ def run_patterns_analysis(df: pd.DataFrame, output_dir: str) -> Dict:
     plot_forward_return_boxplots(val_patterns_in_set, val_fwd, output_dir, prefix="val")
     plot_hit_rate_with_ci(val_results, output_dir, prefix="val")
 
+    # ============ 多时间尺度形态分析 ============
+    print("\n--- 多时间尺度形态分析 ---")
+    mt_results = multi_timeframe_pattern_analysis(['1h', '4h', '1d'])
+    if mt_results:
+        plot_multi_timeframe_hit_rates(mt_results, output_dir)
+
+    # ============ 跨尺度形态一致性分析 ============
+    print("\n--- 跨尺度形态一致性分析 ---")
+    consistency_stats = cross_scale_pattern_consistency(['1h', '4h', '1d'])
+    if consistency_stats:
+        plot_cross_scale_consistency(consistency_stats, output_dir)
+        print(f"\n  检测到 {len(consistency_stats)} 种形态的跨尺度一致性")
+        # 打印前5个一致性最高的形态
+        sorted_patterns = sorted(consistency_stats.items(), key=lambda x: x[1]['consistency_rate'], reverse=True)
+        print("\n  一致性率最高的形态:")
+        for name, stats in sorted_patterns[:5]:
+            rate = stats['consistency_rate']
+            multi = stats['multi_scale_occurrences']
+            total = stats['total_occurrences']
+            print(f"    {name}: {rate:.1%} ({multi}/{total})")
+
     print(f"\n{'='*60}")
     print("  K线形态识别与统计验证完成")
     print(f"{'='*60}")
@@ -853,4 +1142,6 @@ def run_patterns_analysis(df: pd.DataFrame, output_dir: str) -> Dict:
         'fdr_passed_train': fdr_passed_train,
         'fdr_passed_val': fdr_passed_val,
         'all_patterns': all_patterns,
+        'mt_results': mt_results,
+        'consistency_stats': consistency_stats,
     }

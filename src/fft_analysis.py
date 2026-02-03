@@ -24,9 +24,21 @@ from src.preprocessing import log_returns, detrend_linear
 
 # 多时间框架比较所用的K线粒度及其对应采样周期（天）
 MULTI_TF_INTERVALS = {
-    "4h": 4 / 24,    # 0.1667天
-    "1d": 1.0,        # 1天
-    "1w": 7.0,        # 7天
+    "1m": 1 / (24 * 60),    # 分钟线
+    "3m": 3 / (24 * 60),
+    "5m": 5 / (24 * 60),
+    "15m": 15 / (24 * 60),
+    "30m": 30 / (24 * 60),
+    "1h": 1 / 24,            # 小时线
+    "2h": 2 / 24,
+    "4h": 4 / 24,
+    "6h": 6 / 24,
+    "8h": 8 / 24,
+    "12h": 12 / 24,
+    "1d": 1.0,               # 日线
+    "3d": 3.0,
+    "1w": 7.0,               # 周线
+    "1mo": 30.0,             # 月线（近似30天）
 }
 
 # 带通滤波目标周期（天）
@@ -457,18 +469,46 @@ def plot_multi_timeframe(
     fig : plt.Figure
     """
     n_tf = len(tf_results)
-    fig, axes = plt.subplots(n_tf, 1, figsize=(14, 5 * n_tf), sharex=False)
+
+    # 根据时间框架数量决定布局：超过6个使用2列布局
+    if n_tf > 6:
+        ncols = 2
+        nrows = (n_tf + 1) // 2
+        figsize = (16, 4 * nrows)
+    else:
+        ncols = 1
+        nrows = n_tf
+        figsize = (14, 5 * n_tf)
+
+    fig, axes = plt.subplots(nrows, ncols, figsize=figsize, sharex=False)
+
+    # 统一处理axes为一维数组
     if n_tf == 1:
         axes = [axes]
+    else:
+        axes = axes.flatten() if n_tf > 1 else [axes]
 
-    colors = ["#2196F3", "#4CAF50", "#9C27B0"]
+    # 使用colormap生成足够多的颜色
+    if n_tf <= 10:
+        cmap = plt.cm.tab10
+    else:
+        cmap = plt.cm.tab20
+    colors = [cmap(i % cmap.N) for i in range(n_tf)]
 
-    for ax, (label, data), color in zip(axes, tf_results.items(), colors):
+    for idx, ((label, data), color) in enumerate(zip(tf_results.items(), colors)):
+        ax = axes[idx]
         periods = data["periods"]
         power = data["power"]
         noise_mean = data["noise_mean"]
 
-        ax.loglog(periods, power, color=color, linewidth=0.6, alpha=0.8,
+        # 转换颜色为hex格式
+        if isinstance(color, tuple):
+            import matplotlib.colors as mcolors
+            color_hex = mcolors.rgb2hex(color[:3])
+        else:
+            color_hex = color
+
+        ax.loglog(periods, power, color=color_hex, linewidth=0.6, alpha=0.8,
                   label=f"{label} Spectrum")
         ax.loglog(periods, noise_mean, color="#FF9800", linewidth=1.2,
                   linestyle="--", alpha=0.7, label="AR(1) Noise")
@@ -495,12 +535,124 @@ def plot_multi_timeframe(
         ax.legend(loc="upper right", fontsize=9)
         ax.grid(True, which="both", alpha=0.3)
 
-    axes[-1].set_xlabel("Period (days)", fontsize=12)
+    # 隐藏多余的子图
+    for idx in range(n_tf, len(axes)):
+        axes[idx].set_visible(False)
+
+    # 设置xlabel（最底行的子图）
+    if ncols == 2:
+        # 2列布局：设置最后一行的xlabel
+        for idx in range(max(0, len(axes) - ncols), len(axes)):
+            if idx < n_tf:
+                axes[idx].set_xlabel("Period (days)", fontsize=12)
+    else:
+        # 单列布局
+        axes[n_tf - 1].set_xlabel("Period (days)", fontsize=12)
+
     plt.tight_layout()
 
     if save_path:
         fig.savefig(save_path, **SAVE_KW)
         print(f"  [保存] 多时间框架对比图 -> {save_path}")
+
+    return fig
+
+
+def plot_spectral_waterfall(
+    tf_results: Dict[str, dict],
+    save_path: Optional[Path] = None,
+) -> plt.Figure:
+    """
+    15尺度频谱瀑布图 - 热力图展示不同时间框架的功率谱
+
+    Parameters
+    ----------
+    tf_results : dict
+        键为时间框架标签，值为包含 periods/power 的dict
+    save_path : Path, optional
+        保存路径
+
+    Returns
+    -------
+    fig : plt.Figure
+    """
+    if not tf_results:
+        print("  [警告] 无有效时间框架数据，跳过瀑布图")
+        return None
+
+    # 按采样频率排序时间框架（从高频到低频）
+    sorted_tfs = sorted(
+        tf_results.items(),
+        key=lambda x: MULTI_TF_INTERVALS.get(x[0], 1.0)
+    )
+
+    # 统一周期网格（对数空间）
+    all_periods = []
+    for _, data in sorted_tfs:
+        all_periods.extend(data["periods"])
+
+    # 创建对数均匀分布的周期网格
+    min_period = max(1.0, min(all_periods))
+    max_period = max(all_periods)
+    period_grid = np.logspace(np.log10(min_period), np.log10(max_period), 500)
+
+    # 插值每个时间框架的功率谱到统一网格
+    n_tf = len(sorted_tfs)
+    power_matrix = np.zeros((n_tf, len(period_grid)))
+    tf_labels = []
+
+    for i, (label, data) in enumerate(sorted_tfs):
+        periods = data["periods"]
+        power = data["power"]
+
+        # 对数插值
+        log_periods = np.log10(periods)
+        log_power = np.log10(power + 1e-20)  # 避免log(0)
+        log_period_grid = np.log10(period_grid)
+
+        # 使用numpy插值
+        log_power_interp = np.interp(log_period_grid, log_periods, log_power)
+        power_matrix[i, :] = log_power_interp
+        tf_labels.append(label)
+
+    # 绘制热力图
+    fig, ax = plt.subplots(figsize=(16, 10))
+
+    # 使用pcolormesh绘制
+    X, Y = np.meshgrid(period_grid, np.arange(n_tf))
+    im = ax.pcolormesh(X, Y, power_matrix, cmap="viridis", shading="auto")
+
+    # 颜色条
+    cbar = fig.colorbar(im, ax=ax, pad=0.02)
+    cbar.set_label("log10(Power)", fontsize=12)
+
+    # Y轴标签（时间框架）
+    ax.set_yticks(np.arange(n_tf))
+    ax.set_yticklabels(tf_labels, fontsize=10)
+    ax.set_ylabel("Timeframe", fontsize=12, fontweight="bold")
+
+    # X轴对数刻度
+    ax.set_xscale("log")
+    ax.set_xlabel("Period (days)", fontsize=12, fontweight="bold")
+    ax.set_xlim(min_period, max_period)
+
+    # 关键周期参考线
+    key_periods = [7, 30, 90, 365, 1460]
+    for kp in key_periods:
+        if min_period <= kp <= max_period:
+            ax.axvline(kp, color="white", linestyle="--", linewidth=0.8, alpha=0.5)
+            ax.text(kp, n_tf + 0.5, f"{kp}d", fontsize=8, color="white",
+                   ha="center", va="bottom", fontweight="bold")
+
+    ax.set_title("BTC Price FFT Spectral Waterfall - Multi-Timeframe Comparison",
+                fontsize=14, fontweight="bold", pad=15)
+    ax.grid(True, which="both", alpha=0.2, color="white", linewidth=0.5)
+
+    plt.tight_layout()
+
+    if save_path:
+        fig.savefig(save_path, **SAVE_KW)
+        print(f"  [保存] 频谱瀑布图 -> {save_path}")
 
     return fig
 
@@ -637,7 +789,7 @@ def run_fft_analysis(
     执行以下分析并保存可视化结果：
     1. 日线对数收益率FFT频谱分析（Hann窗 + AR1红噪声基线）
     2. 功率谱峰值检测（5x噪声阈值）
-    3. 多时间框架（4h/1d/1w）频谱对比
+    3. 多时间框架（全部15个粒度）频谱对比 + 频谱瀑布图
     4. 带通滤波提取关键周期分量（7d/30d/90d/365d/1400d）
 
     Parameters
@@ -721,7 +873,8 @@ def run_fft_analysis(
     # ----------------------------------------------------------
     # 第二部分：多时间框架FFT对比
     # ----------------------------------------------------------
-    print("\n[2/4] 多时间框架FFT对比 (4h / 1d / 1w)")
+    print("\n[2/4] 多时间框架FFT对比 (全部15个粒度)")
+    print(f"  时间框架列表: {list(MULTI_TF_INTERVALS.keys())}")
     tf_results = {}
 
     for interval, sp_days in MULTI_TF_INTERVALS.items():
@@ -734,11 +887,13 @@ def run_fft_analysis(
             if result:
                 tf_results[interval] = result
                 n_peaks = len(result["peaks"]) if not result["peaks"].empty else 0
-                print(f"  {interval}: {len(result['log_ret'])} 样本, {n_peaks} 个显著峰值")
+                print(f"  {interval:>4}: {len(result['log_ret']):>8} 样本, {n_peaks:>2} 个显著峰值")
         except FileNotFoundError:
             print(f"  [警告] {interval} 数据文件未找到，跳过")
         except Exception as e:
             print(f"  [警告] {interval} 分析失败: {e}")
+
+    print(f"\n  成功分析 {len(tf_results)}/{len(MULTI_TF_INTERVALS)} 个时间框架")
 
     # 多时间框架对比图
     if len(tf_results) > 1:
@@ -747,6 +902,14 @@ def run_fft_analysis(
             save_path=output_path / "fft_multi_timeframe.png",
         )
         plt.close(fig_mtf)
+
+        # 新增：频谱瀑布图
+        fig_waterfall = plot_spectral_waterfall(
+            tf_results,
+            save_path=output_path / "fft_spectral_waterfall.png",
+        )
+        if fig_waterfall:
+            plt.close(fig_waterfall)
     else:
         print("  [警告] 可用时间框架不足，跳过对比图")
 

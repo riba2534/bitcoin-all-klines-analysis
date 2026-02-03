@@ -24,6 +24,9 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import cross_val_predict, StratifiedKFold
 from sklearn.metrics import roc_auc_score, roc_curve
 
+from src.data_loader import load_klines
+from src.preprocessing import add_derived_features
+
 try:
     from pyod.models.copod import COPOD
     HAS_COPOD = True
@@ -626,6 +629,164 @@ def plot_feature_importance(precursor_results: Dict, output_dir: Path, top_n: in
 
 
 # ============================================================
+# 9. 多尺度异常检测
+# ============================================================
+
+def multi_scale_anomaly_detection(intervals=None, contamination=0.05) -> Dict:
+    """多尺度异常检测"""
+    if intervals is None:
+        intervals = ['1h', '4h', '1d']
+
+    results = {}
+    for interval in intervals:
+        try:
+            print(f"\n  加载 {interval} 数据进行异常检测...")
+            df_tf = load_klines(interval)
+            df_tf = add_derived_features(df_tf)
+
+            # 截断大数据
+            if len(df_tf) > 50000:
+                df_tf = df_tf.iloc[-50000:]
+
+            if len(df_tf) < 200:
+                print(f"    {interval} 数据不足，跳过")
+                continue
+
+            # 集成异常检测
+            anomaly_result = ensemble_anomaly_detection(df_tf, contamination=contamination, min_agreement=2)
+
+            # 提取异常日期
+            anomaly_dates = anomaly_result[anomaly_result['anomaly_ensemble'] == 1].index
+
+            results[interval] = {
+                'anomaly_dates': anomaly_dates,
+                'n_anomalies': len(anomaly_dates),
+                'n_total': len(anomaly_result),
+                'anomaly_pct': len(anomaly_dates) / len(anomaly_result) * 100,
+            }
+
+            print(f"    {interval}: {len(anomaly_dates)} 个异常 ({len(anomaly_dates)/len(anomaly_result)*100:.2f}%)")
+
+        except FileNotFoundError:
+            print(f"    {interval} 数据文件不存在，跳过")
+        except Exception as e:
+            print(f"    {interval} 异常检测失败: {e}")
+
+    return results
+
+
+def cross_scale_anomaly_consensus(ms_results: Dict, tolerance_hours: int = 24) -> pd.DataFrame:
+    """
+    跨尺度异常共识：多个尺度在同一时间窗口内同时报异常 → 高置信度
+
+    Parameters
+    ----------
+    ms_results : Dict
+        多尺度异常检测结果字典
+    tolerance_hours : int
+        时间容差（小时）
+
+    Returns
+    -------
+    pd.DataFrame
+        共识异常数据
+    """
+    # 将所有尺度的异常日期映射到日频
+    all_dates = []
+    for interval, result in ms_results.items():
+        dates = result['anomaly_dates']
+        # 转换为日期（去除时间部分）
+        daily_dates = pd.to_datetime(dates.date).unique()
+        for date in daily_dates:
+            all_dates.append({'date': date, 'interval': interval})
+
+    if not all_dates:
+        return pd.DataFrame()
+
+    df_dates = pd.DataFrame(all_dates)
+
+    # 统计每个日期被多少个尺度报为异常
+    consensus_counts = df_dates.groupby('date').size().reset_index(name='n_scales')
+    consensus_counts = consensus_counts.sort_values('date')
+
+    # >=2 个尺度报异常 = "共识异常"
+    consensus_counts['is_consensus'] = (consensus_counts['n_scales'] >= 2).astype(int)
+
+    # 添加参与的尺度列表
+    scale_groups = df_dates.groupby('date')['interval'].apply(list).reset_index()
+    consensus_counts = consensus_counts.merge(scale_groups, on='date')
+
+    n_consensus = consensus_counts['is_consensus'].sum()
+    print(f"\n  跨尺度共识异常: {n_consensus} 天 (≥2 个尺度同时报异常)")
+
+    return consensus_counts
+
+
+def plot_multi_scale_anomaly_timeline(df: pd.DataFrame, ms_results: Dict, consensus: pd.DataFrame, output_dir: Path):
+    """多尺度异常共识时间线"""
+    fig, axes = plt.subplots(2, 1, figsize=(16, 10), gridspec_kw={'height_ratios': [2, 1]})
+
+    # 上图: 价格图（对数尺度）+ 共识异常点标注
+    ax1 = axes[0]
+    ax1.plot(df.index, df['close'], linewidth=0.6, color='steelblue', alpha=0.8, label='BTC 收盘价')
+
+    if not consensus.empty:
+        # 标注共识异常点
+        consensus_dates = consensus[consensus['is_consensus'] == 1]['date']
+        if len(consensus_dates) > 0:
+            # 获取对应的价格
+            consensus_prices = df.loc[df.index.isin(consensus_dates), 'close']
+            if not consensus_prices.empty:
+                ax1.scatter(consensus_prices.index, consensus_prices.values,
+                           color='red', s=50, zorder=5, label=f'共识异常 (n={len(consensus_prices)})',
+                           alpha=0.8, edgecolors='darkred', linewidths=1, marker='*')
+
+    ax1.set_ylabel('价格 (USDT)', fontsize=12)
+    ax1.set_title('多尺度异常检测：价格与共识异常', fontsize=14)
+    ax1.legend(fontsize=10, loc='upper left')
+    ax1.grid(True, alpha=0.3)
+    ax1.set_yscale('log')
+
+    # 下图: 各尺度异常时间线（类似甘特图）
+    ax2 = axes[1]
+
+    interval_labels = list(ms_results.keys())
+    y_positions = range(len(interval_labels))
+
+    colors = {'1h': 'lightcoral', '4h': 'orange', '1d': 'steelblue'}
+
+    for idx, interval in enumerate(interval_labels):
+        anomaly_dates = ms_results[interval]['anomaly_dates']
+        # 转换为日期
+        daily_dates = pd.to_datetime(anomaly_dates.date).unique()
+
+        # 绘制时间线（每个异常日期用竖线表示）
+        for date in daily_dates:
+            ax2.axvline(x=date, ymin=idx/len(interval_labels), ymax=(idx+0.8)/len(interval_labels),
+                       color=colors.get(interval, 'gray'), alpha=0.6, linewidth=2)
+
+    # 标注共识异常区域
+    if not consensus.empty:
+        consensus_dates = consensus[consensus['is_consensus'] == 1]['date']
+        for date in consensus_dates:
+            ax2.axvspan(date, date + pd.Timedelta(days=1),
+                       color='red', alpha=0.15, zorder=0)
+
+    ax2.set_yticks(y_positions)
+    ax2.set_yticklabels(interval_labels)
+    ax2.set_ylabel('时间尺度', fontsize=12)
+    ax2.set_xlabel('日期', fontsize=12)
+    ax2.set_title('各尺度异常时间线（红色背景 = 共识异常）', fontsize=12)
+    ax2.grid(True, alpha=0.3, axis='x')
+    ax2.set_xlim(df.index.min(), df.index.max())
+
+    fig.tight_layout()
+    fig.savefig(output_dir / 'anomaly_multi_scale_timeline.png', dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    print(f"  [保存] {output_dir / 'anomaly_multi_scale_timeline.png'}")
+
+
+# ============================================================
 # 7. 结果打印
 # ============================================================
 
@@ -747,6 +908,14 @@ def run_anomaly_analysis(
     # --- 汇总打印 ---
     print_anomaly_summary(anomaly_result, garch_anomaly, precursor_results)
 
+    # --- 多尺度异常检测 ---
+    print("\n>>> [额外] 多尺度异常检测与共识分析...")
+    ms_anomaly = multi_scale_anomaly_detection(['1h', '4h', '1d'])
+    consensus = None
+    if len(ms_anomaly) >= 2:
+        consensus = cross_scale_anomaly_consensus(ms_anomaly)
+        plot_multi_scale_anomaly_timeline(df, ms_anomaly, consensus, output_dir)
+
     print("\n" + "=" * 70)
     print("异常检测与前兆模式分析完成！")
     print(f"图表已保存至: {output_dir.resolve()}")
@@ -757,6 +926,8 @@ def run_anomaly_analysis(
         'garch_anomaly': garch_anomaly,
         'event_alignment': event_alignment,
         'precursor_results': precursor_results,
+        'multi_scale_anomaly': ms_anomaly,
+        'cross_scale_consensus': consensus,
     }
 
 

@@ -120,18 +120,21 @@ def fat_tail_analysis(returns: pd.Series) -> dict:
 
 def multi_timeframe_distributions() -> dict:
     """
-    加载1h/4h/1d/1w数据，计算各时间尺度的对数收益率分布
+    加载全部15个粒度数据，计算各时间尺度的对数收益率分布
 
     Returns
     -------
     dict
         {interval: pd.Series} 各时间尺度的对数收益率
     """
-    intervals = ['1h', '4h', '1d', '1w']
+    intervals = ['1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '8h', '12h', '1d', '3d', '1w', '1mo']
     distributions = {}
     for interval in intervals:
         try:
             df = load_klines(interval)
+            # 对1m数据，如果数据量超过500000行，只取最后500000行
+            if interval == '1m' and len(df) > 500000:
+                df = df.iloc[-500000:]
             ret = log_returns(df['close'])
             distributions[interval] = ret
         except FileNotFoundError:
@@ -249,23 +252,45 @@ def plot_qq(returns: pd.Series, output_dir: Path):
 
 
 def plot_multi_timeframe(distributions: dict, output_dir: Path):
-    """绘制多时间尺度收益率分布对比"""
+    """绘制多时间尺度收益率分布对比（动态布局）"""
     n_plots = len(distributions)
     if n_plots == 0:
         print("[警告] 无可用的多时间尺度数据")
         return
 
-    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
-    axes = axes.flatten()
+    # 动态计算行列数
+    if n_plots <= 4:
+        n_rows, n_cols = 2, 2
+    elif n_plots <= 6:
+        n_rows, n_cols = 2, 3
+    elif n_plots <= 9:
+        n_rows, n_cols = 3, 3
+    elif n_plots <= 12:
+        n_rows, n_cols = 3, 4
+    elif n_plots <= 16:
+        n_rows, n_cols = 4, 4
+    else:
+        n_rows, n_cols = 5, 3
+
+    # 自适应图幅大小
+    fig_width = n_cols * 4.5
+    fig_height = n_rows * 3.5
+
+    # 使用GridSpec布局
+    fig = plt.figure(figsize=(fig_width, fig_height))
+    gs = GridSpec(n_rows, n_cols, figure=fig, hspace=0.35, wspace=0.3)
 
     interval_names = {
-        '1h': '1小时', '4h': '4小时', '1d': '1天', '1w': '1周'
+        '1m': '1分钟', '3m': '3分钟', '5m': '5分钟', '15m': '15分钟', '30m': '30分钟',
+        '1h': '1小时', '2h': '2小时', '4h': '4小时', '6h': '6小时', '8h': '8小时',
+        '12h': '12小时', '1d': '1天', '3d': '3天', '1w': '1周', '1mo': '1月'
     }
 
     for idx, (interval, ret) in enumerate(distributions.items()):
-        if idx >= 4:
-            break
-        ax = axes[idx]
+        row = idx // n_cols
+        col = idx % n_cols
+        ax = fig.add_subplot(gs[row, col])
+
         r = ret.dropna().values
         mu, sigma = r.mean(), r.std()
 
@@ -279,17 +304,20 @@ def plot_multi_timeframe(distributions: dict, output_dir: Path):
         kurt = stats.kurtosis(r)
         skew = stats.skew(r)
         label = interval_names.get(interval, interval)
-        ax.set_title(f'{label}收益率 (峰度={kurt:.2f}, 偏度={skew:.3f})', fontsize=11)
-        ax.set_xlabel('对数收益率', fontsize=10)
-        ax.set_ylabel('概率密度', fontsize=10)
+        ax.set_title(f'{label}收益率 (峰度={kurt:.2f}, 偏度={skew:.3f})', fontsize=10)
+        ax.set_xlabel('对数收益率', fontsize=9)
+        ax.set_ylabel('概率密度', fontsize=9)
         ax.grid(True, alpha=0.3)
 
     # 隐藏多余子图
-    for idx in range(len(distributions), 4):
-        axes[idx].set_visible(False)
+    total_subplots = n_rows * n_cols
+    for idx in range(n_plots, total_subplots):
+        row = idx // n_cols
+        col = idx % n_cols
+        ax = fig.add_subplot(gs[row, col])
+        ax.set_visible(False)
 
-    fig.suptitle('多时间尺度BTC对数收益率分布', fontsize=14, y=1.02)
-    fig.tight_layout()
+    fig.suptitle('多时间尺度BTC对数收益率分布', fontsize=14, y=0.995)
     fig.savefig(output_dir / 'multi_timeframe_distributions.png',
                 dpi=150, bbox_inches='tight')
     plt.close(fig)
@@ -318,6 +346,92 @@ def plot_garch_conditional_vol(garch_results: dict, output_dir: Path):
                 dpi=150, bbox_inches='tight')
     plt.close(fig)
     print(f"[保存] {output_dir / 'garch_conditional_volatility.png'}")
+
+
+def plot_moments_vs_scale(distributions: dict, output_dir: Path):
+    """
+    绘制峰度/偏度 vs 时间尺度图
+
+    Parameters
+    ----------
+    distributions : dict
+        {interval: pd.Series} 各时间尺度的对数收益率
+    output_dir : Path
+        输出目录
+    """
+    if len(distributions) == 0:
+        print("[警告] 无可用的多时间尺度数据，跳过峰度/偏度分析")
+        return
+
+    # 各粒度对应的采样周期（天）
+    INTERVAL_DAYS = {
+        "1m": 1/(24*60), "3m": 3/(24*60), "5m": 5/(24*60), "15m": 15/(24*60),
+        "30m": 30/(24*60), "1h": 1/24, "2h": 2/24, "4h": 4/24, "6h": 6/24,
+        "8h": 8/24, "12h": 12/24, "1d": 1, "3d": 3, "1w": 7, "1mo": 30
+    }
+
+    # 计算各尺度的峰度和偏度
+    intervals = []
+    delta_t = []
+    kurtosis_vals = []
+    skewness_vals = []
+
+    for interval, ret in distributions.items():
+        r = ret.dropna().values
+        if len(r) > 0:
+            intervals.append(interval)
+            delta_t.append(INTERVAL_DAYS.get(interval, np.nan))
+            kurtosis_vals.append(stats.kurtosis(r))  # excess kurtosis
+            skewness_vals.append(stats.skew(r))
+
+    # 按时间尺度排序
+    sorted_indices = np.argsort(delta_t)
+    delta_t = np.array(delta_t)[sorted_indices]
+    kurtosis_vals = np.array(kurtosis_vals)[sorted_indices]
+    skewness_vals = np.array(skewness_vals)[sorted_indices]
+    intervals = np.array(intervals)[sorted_indices]
+
+    # 创建2个子图
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
+
+    # 子图1: 峰度 vs log(Δt)
+    ax1.plot(np.log10(delta_t), kurtosis_vals, 'o-', markersize=8, linewidth=2,
+             color='steelblue', label='超额峰度')
+    ax1.axhline(y=0, color='red', linestyle='--', linewidth=1.5,
+                label='正态分布参考线 (峰度=0)')
+    ax1.set_xlabel('log₁₀(Δt) [天]', fontsize=12)
+    ax1.set_ylabel('超额峰度 (Excess Kurtosis)', fontsize=12)
+    ax1.set_title('峰度 vs 时间尺度', fontsize=14)
+    ax1.grid(True, alpha=0.3)
+    ax1.legend(fontsize=11)
+
+    # 在数据点旁添加interval标签
+    for i, txt in enumerate(intervals):
+        ax1.annotate(txt, (np.log10(delta_t[i]), kurtosis_vals[i]),
+                    textcoords="offset points", xytext=(0, 8),
+                    ha='center', fontsize=8, alpha=0.7)
+
+    # 子图2: 偏度 vs log(Δt)
+    ax2.plot(np.log10(delta_t), skewness_vals, 's-', markersize=8, linewidth=2,
+             color='darkorange', label='偏度')
+    ax2.axhline(y=0, color='red', linestyle='--', linewidth=1.5,
+                label='正态分布参考线 (偏度=0)')
+    ax2.set_xlabel('log₁₀(Δt) [天]', fontsize=12)
+    ax2.set_ylabel('偏度 (Skewness)', fontsize=12)
+    ax2.set_title('偏度 vs 时间尺度', fontsize=14)
+    ax2.grid(True, alpha=0.3)
+    ax2.legend(fontsize=11)
+
+    # 在数据点旁添加interval标签
+    for i, txt in enumerate(intervals):
+        ax2.annotate(txt, (np.log10(delta_t[i]), skewness_vals[i]),
+                    textcoords="offset points", xytext=(0, 8),
+                    ha='center', fontsize=8, alpha=0.7)
+
+    fig.tight_layout()
+    fig.savefig(output_dir / 'moments_vs_scale.png', dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    print(f"[保存] {output_dir / 'moments_vs_scale.png'}")
 
 
 # ============================================================
@@ -452,6 +566,7 @@ def run_returns_analysis(df: pd.DataFrame, output_dir: str = "output/returns"):
     plot_histogram_vs_normal(daily_returns, output_dir)
     plot_qq(daily_returns, output_dir)
     plot_multi_timeframe(distributions, output_dir)
+    plot_moments_vs_scale(distributions, output_dir)
     plot_garch_conditional_vol(garch_results, output_dir)
 
     print("\n" + "=" * 60)

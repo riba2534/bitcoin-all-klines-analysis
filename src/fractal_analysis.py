@@ -28,6 +28,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from src.data_loader import load_klines
 from src.preprocessing import log_returns
 
+import warnings
+warnings.filterwarnings('ignore')
+
 
 # ============================================================
 # 盒计数法（Box-Counting Dimension）
@@ -311,6 +314,177 @@ def multi_scale_self_similarity(prices: np.ndarray,
 
 
 # ============================================================
+# 多重分形 DFA (MF-DFA)
+# ============================================================
+def mfdfa_analysis(series: np.ndarray, q_list=None, scales=None) -> Dict:
+    """
+    多重分形 DFA (MF-DFA)
+
+    计算广义 Hurst 指数 h(q) 和多重分形谱 f(α)
+
+    Parameters
+    ----------
+    series : np.ndarray
+        时间序列（对数收益率）
+    q_list : list
+        q 值列表，默认 [-5, -4, -3, -2, -1, -0.5, 0.5, 1, 2, 3, 4, 5]
+    scales : list
+        尺度列表，默认对数均匀分布
+
+    Returns
+    -------
+    dict
+        包含 hq, q_list, h_list, tau, alpha, f_alpha, multifractal_width
+    """
+    if q_list is None:
+        q_list = [-5, -4, -3, -2, -1, -0.5, 0.5, 1, 2, 3, 4, 5]
+
+    N = len(series)
+    if scales is None:
+        scales = np.unique(np.logspace(np.log10(10), np.log10(N//4), 20).astype(int))
+
+    # 累积偏差序列
+    Y = np.cumsum(series - np.mean(series))
+
+    # 对每个尺度和 q 值计算波动函数
+    Fq = {}
+    for s in scales:
+        n_seg = N // s
+        if n_seg < 1:
+            continue
+
+        # 正向和反向分段
+        var_list = []
+        for v in range(n_seg):
+            segment = Y[v*s:(v+1)*s]
+            x = np.arange(s)
+            coeffs = np.polyfit(x, segment, 1)
+            trend = np.polyval(coeffs, x)
+            var_list.append(np.mean((segment - trend)**2))
+
+        for v in range(n_seg):
+            segment = Y[N - (v+1)*s:N - v*s]
+            x = np.arange(s)
+            coeffs = np.polyfit(x, segment, 1)
+            trend = np.polyval(coeffs, x)
+            var_list.append(np.mean((segment - trend)**2))
+
+        var_arr = np.array(var_list)
+        var_arr = var_arr[var_arr > 0]  # 去除零方差
+
+        if len(var_arr) == 0:
+            continue
+
+        for q in q_list:
+            if q == 0:
+                fq_val = np.exp(0.5 * np.mean(np.log(var_arr)))
+            else:
+                fq_val = (np.mean(var_arr ** (q/2))) ** (1/q)
+
+            if q not in Fq:
+                Fq[q] = {'scales': [], 'fq': []}
+            Fq[q]['scales'].append(s)
+            Fq[q]['fq'].append(fq_val)
+
+    # 对每个 q 拟合 h(q)
+    hq = {}
+    for q in q_list:
+        if q not in Fq or len(Fq[q]['scales']) < 3:
+            continue
+        log_s = np.log(Fq[q]['scales'])
+        log_fq = np.log(Fq[q]['fq'])
+        slope, intercept, r_value, p_value, std_err = stats.linregress(log_s, log_fq)
+        hq[q] = slope
+
+    # 计算多重分形谱 f(α)
+    q_vals = sorted(hq.keys())
+    h_vals = [hq[q] for q in q_vals]
+
+    # τ(q) = q*h(q) - 1
+    tau = [q * hq[q] - 1 for q in q_vals]
+
+    # α = dτ/dq (数值微分)
+    alpha = np.gradient(tau, q_vals)
+
+    # f(α) = q*α - τ
+    f_alpha = [q_vals[i] * alpha[i] - tau[i] for i in range(len(q_vals))]
+
+    return {
+        'hq': hq,  # {q: h(q)}
+        'q_list': q_vals,
+        'h_list': h_vals,
+        'tau': tau,
+        'alpha': list(alpha),
+        'f_alpha': f_alpha,
+        'multifractal_width': max(alpha) - min(alpha) if len(alpha) > 0 else 0,
+    }
+
+
+# ============================================================
+# 多时间尺度分形对比
+# ============================================================
+def multi_timeframe_fractal(df_1h: pd.DataFrame, df_4h: pd.DataFrame, df_1d: pd.DataFrame) -> Dict:
+    """
+    多时间尺度分形分析对比
+
+    对 1h, 4h, 1d 数据分别做盒计数和 MF-DFA
+
+    Parameters
+    ----------
+    df_1h : pd.DataFrame
+        1小时K线数据
+    df_4h : pd.DataFrame
+        4小时K线数据
+    df_1d : pd.DataFrame
+        日线K线数据
+
+    Returns
+    -------
+    dict
+        各时间尺度的分形维数和多重分形宽度
+    """
+    results = {}
+
+    for name, df in [('1h', df_1h), ('4h', df_4h), ('1d', df_1d)]:
+        if df is None or len(df) == 0:
+            continue
+
+        prices = df['close'].dropna().values
+        if len(prices) < 100:
+            continue
+
+        # 盒计数分形维数
+        D, _, _ = box_counting_dimension(prices)
+
+        # 计算对数收益率用于 MF-DFA
+        returns = np.diff(np.log(prices))
+
+        # 大数据截断（MF-DFA 计算开销较大）
+        if len(returns) > 50000:
+            returns = returns[-50000:]
+
+        # MF-DFA 分析
+        try:
+            mfdfa_result = mfdfa_analysis(returns)
+            multifractal_width = mfdfa_result['multifractal_width']
+            h_q2 = mfdfa_result['hq'].get(2, np.nan)  # q=2 对应标准 Hurst 指数
+        except Exception as e:
+            print(f"  {name} MF-DFA 计算失败: {e}")
+            multifractal_width = np.nan
+            h_q2 = np.nan
+
+        results[name] = {
+            '样本量': len(prices),
+            '分形维数': D,
+            'Hurst(从D)': 2.0 - D,
+            '多重分形宽度': multifractal_width,
+            'Hurst(MF-DFA,q=2)': h_q2,
+        }
+
+    return results
+
+
+# ============================================================
 # 可视化函数
 # ============================================================
 def plot_box_counting(log_inv_scales: np.ndarray, log_counts: np.ndarray, D: float,
@@ -463,6 +637,147 @@ def plot_self_similarity(scaling_result: Dict, output_dir: Path,
     print(f"  已保存: {filepath}")
 
 
+def plot_mfdfa(mfdfa_result: Dict, output_dir: Path,
+               filename: str = "fractal_mfdfa.png"):
+    """绘制 MF-DFA 分析结果：h(q) 和 f(α) 谱"""
+    if not mfdfa_result or len(mfdfa_result.get('q_list', [])) == 0:
+        print("  没有可绘制的 MF-DFA 结果")
+        return
+
+    fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+
+    # 图1: h(q) vs q 曲线
+    ax1 = axes[0]
+    q_list = mfdfa_result['q_list']
+    h_list = mfdfa_result['h_list']
+
+    ax1.plot(q_list, h_list, 'o-', color='steelblue', linewidth=2, markersize=6)
+    ax1.axhline(y=0.5, color='red', linestyle='--', alpha=0.7, label='H=0.5 (随机游走)')
+    ax1.axvline(x=0, color='gray', linestyle='--', alpha=0.5)
+
+    ax1.set_xlabel('矩阶 q', fontsize=12)
+    ax1.set_ylabel('广义 Hurst 指数 h(q)', fontsize=12)
+    ax1.set_title('MF-DFA 广义 Hurst 指数谱', fontsize=13)
+    ax1.legend(fontsize=10)
+    ax1.grid(True, alpha=0.3)
+
+    # 图2: f(α) 多重分形谱
+    ax2 = axes[1]
+    alpha = mfdfa_result['alpha']
+    f_alpha = mfdfa_result['f_alpha']
+
+    ax2.plot(alpha, f_alpha, 'o-', color='seagreen', linewidth=2, markersize=6)
+    ax2.axhline(y=1, color='red', linestyle='--', alpha=0.7, label='f(α)=1 理论峰值')
+
+    # 标注多重分形宽度
+    width = mfdfa_result['multifractal_width']
+    ax2.text(0.05, 0.95, f'多重分形宽度 Δα = {width:.4f}',
+             transform=ax2.transAxes, fontsize=11,
+             verticalalignment='top',
+             bbox=dict(boxstyle='round', facecolor='lightyellow', alpha=0.8))
+
+    ax2.set_xlabel('奇异指数 α', fontsize=12)
+    ax2.set_ylabel('多重分形谱 f(α)', fontsize=12)
+    ax2.set_title('多重分形谱 f(α)', fontsize=13)
+    ax2.legend(fontsize=10)
+    ax2.grid(True, alpha=0.3)
+
+    fig.suptitle(f'BTC 多重分形 DFA 分析 (Δα = {width:.4f})',
+                 fontsize=14, y=1.00)
+    fig.tight_layout()
+    filepath = output_dir / filename
+    fig.savefig(filepath, dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    print(f"  已保存: {filepath}")
+
+
+def plot_multi_timeframe_fractal(mtf_results: Dict, output_dir: Path,
+                                   filename: str = "fractal_multi_timeframe.png"):
+    """绘制多时间尺度分形对比图"""
+    if not mtf_results:
+        print("  没有可绘制的多时间尺度对比结果")
+        return
+
+    timeframes = sorted(mtf_results.keys(), key=lambda x: {'1h': 1, '4h': 4, '1d': 24}[x])
+    fractal_dims = [mtf_results[tf]['分形维数'] for tf in timeframes]
+    multifractal_widths = [mtf_results[tf]['多重分形宽度'] for tf in timeframes]
+    hurst_from_d = [mtf_results[tf]['Hurst(从D)'] for tf in timeframes]
+    hurst_mfdfa = [mtf_results[tf]['Hurst(MF-DFA,q=2)'] for tf in timeframes]
+
+    fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+
+    # 图1: 分形维数对比
+    ax1 = axes[0, 0]
+    x_pos = np.arange(len(timeframes))
+    bars1 = ax1.bar(x_pos, fractal_dims, color='steelblue', alpha=0.8)
+    ax1.axhline(y=1.5, color='red', linestyle='--', alpha=0.7, label='D=1.5 (随机游走)')
+    ax1.set_xticks(x_pos)
+    ax1.set_xticklabels(timeframes)
+    ax1.set_ylabel('分形维数 D', fontsize=11)
+    ax1.set_title('不同时间尺度的分形维数', fontsize=12)
+    ax1.legend(fontsize=10)
+    ax1.grid(True, alpha=0.3, axis='y')
+
+    # 在柱子上标注数值
+    for i, (bar, val) in enumerate(zip(bars1, fractal_dims)):
+        ax1.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.01,
+                f'{val:.4f}', ha='center', va='bottom', fontsize=10)
+
+    # 图2: 多重分形宽度对比
+    ax2 = axes[0, 1]
+    bars2 = ax2.bar(x_pos, multifractal_widths, color='seagreen', alpha=0.8)
+    ax2.set_xticks(x_pos)
+    ax2.set_xticklabels(timeframes)
+    ax2.set_ylabel('多重分形宽度 Δα', fontsize=11)
+    ax2.set_title('不同时间尺度的多重分形宽度', fontsize=12)
+    ax2.grid(True, alpha=0.3, axis='y')
+
+    # 在柱子上标注数值
+    for i, (bar, val) in enumerate(zip(bars2, multifractal_widths)):
+        if not np.isnan(val):
+            ax2.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.005,
+                    f'{val:.4f}', ha='center', va='bottom', fontsize=10)
+
+    # 图3: Hurst 指数对比（两种方法）
+    ax3 = axes[1, 0]
+    width = 0.35
+    x_pos = np.arange(len(timeframes))
+    bars3a = ax3.bar(x_pos - width/2, hurst_from_d, width, label='Hurst(从D推算)',
+                     color='coral', alpha=0.8)
+    bars3b = ax3.bar(x_pos + width/2, hurst_mfdfa, width, label='Hurst(MF-DFA,q=2)',
+                     color='orchid', alpha=0.8)
+    ax3.axhline(y=0.5, color='red', linestyle='--', alpha=0.7, label='H=0.5 (随机游走)')
+    ax3.set_xticks(x_pos)
+    ax3.set_xticklabels(timeframes)
+    ax3.set_ylabel('Hurst 指数 H', fontsize=11)
+    ax3.set_title('不同时间尺度的 Hurst 指数对比', fontsize=12)
+    ax3.legend(fontsize=10)
+    ax3.grid(True, alpha=0.3, axis='y')
+
+    # 图4: 样本量信息
+    ax4 = axes[1, 1]
+    samples = [mtf_results[tf]['样本量'] for tf in timeframes]
+    bars4 = ax4.bar(x_pos, samples, color='skyblue', alpha=0.8)
+    ax4.set_xticks(x_pos)
+    ax4.set_xticklabels(timeframes)
+    ax4.set_ylabel('样本量', fontsize=11)
+    ax4.set_title('不同时间尺度的数据量', fontsize=12)
+    ax4.grid(True, alpha=0.3, axis='y')
+
+    # 在柱子上标注数值
+    for i, (bar, val) in enumerate(zip(bars4, samples)):
+        ax4.text(bar.get_x() + bar.get_width()/2, bar.get_height() + max(samples)*0.01,
+                f'{val}', ha='center', va='bottom', fontsize=10)
+
+    fig.suptitle('BTC 多时间尺度分形特征对比 (1h vs 4h vs 1d)',
+                 fontsize=14, y=0.995)
+    fig.tight_layout()
+    filepath = output_dir / filename
+    fig.savefig(filepath, dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    print(f"  已保存: {filepath}")
+
+
 # ============================================================
 # 主入口函数
 # ============================================================
@@ -604,7 +919,92 @@ def run_fractal_analysis(df: pd.DataFrame, output_dir: str = "output/fractal") -
     plot_self_similarity(scaling_result, output_dir)
 
     # ----------------------------------------------------------
-    # 5. 总结
+    # 4. 多重分形 DFA 分析
+    # ----------------------------------------------------------
+    print("\n" + "-" * 50)
+    print("【4】多重分形 DFA (MF-DFA) 分析")
+    print("-" * 50)
+
+    # 计算对数收益率
+    returns = np.diff(np.log(prices))
+
+    # 大数据截断
+    if len(returns) > 50000:
+        print(f"  数据量较大 ({len(returns)}), 截断至最后 50000 个点进行 MF-DFA 分析")
+        returns_for_mfdfa = returns[-50000:]
+    else:
+        returns_for_mfdfa = returns
+
+    try:
+        mfdfa_result = mfdfa_analysis(returns_for_mfdfa)
+        results['MF-DFA'] = {
+            '多重分形宽度': mfdfa_result['multifractal_width'],
+            'Hurst(q=2)': mfdfa_result['hq'].get(2, np.nan),
+            'Hurst(q=-2)': mfdfa_result['hq'].get(-2, np.nan),
+        }
+
+        print(f"\n  MF-DFA 分析结果:")
+        print(f"    多重分形宽度 Δα = {mfdfa_result['multifractal_width']:.4f}")
+        print(f"    Hurst 指数 (q=2): H = {mfdfa_result['hq'].get(2, np.nan):.4f}")
+        print(f"    Hurst 指数 (q=-2): H = {mfdfa_result['hq'].get(-2, np.nan):.4f}")
+
+        if mfdfa_result['multifractal_width'] > 0.3:
+            mf_interpretation = "显著多重分形特征 - 价格波动具有复杂的标度行为"
+        elif mfdfa_result['multifractal_width'] > 0.15:
+            mf_interpretation = "中等多重分形特征 - 存在一定的多尺度结构"
+        else:
+            mf_interpretation = "弱多重分形特征 - 接近单一分形"
+
+        print(f"    解读: {mf_interpretation}")
+        results['MF-DFA']['解读'] = mf_interpretation
+
+        # 绘制 MF-DFA 图
+        plot_mfdfa(mfdfa_result, output_dir)
+
+    except Exception as e:
+        print(f"  MF-DFA 分析失败: {e}")
+        results['MF-DFA'] = {'错误': str(e)}
+
+    # ----------------------------------------------------------
+    # 5. 多时间尺度分形对比
+    # ----------------------------------------------------------
+    print("\n" + "-" * 50)
+    print("【5】多时间尺度分形对比 (1h vs 4h vs 1d)")
+    print("-" * 50)
+
+    try:
+        # 加载不同时间尺度数据
+        print("  加载 1h 数据...")
+        df_1h = load_klines('1h')
+        print(f"    1h 数据: {len(df_1h)} 条")
+
+        print("  加载 4h 数据...")
+        df_4h = load_klines('4h')
+        print(f"    4h 数据: {len(df_4h)} 条")
+
+        # df 是日线数据
+        df_1d = df
+        print(f"  日线数据: {len(df_1d)} 条")
+
+        # 多时间尺度分析
+        mtf_results = multi_timeframe_fractal(df_1h, df_4h, df_1d)
+        results['多时间尺度对比'] = mtf_results
+
+        print(f"\n  多时间尺度对比结果:")
+        for tf in sorted(mtf_results.keys(), key=lambda x: {'1h': 1, '4h': 4, '1d': 24}[x]):
+            res = mtf_results[tf]
+            print(f"    {tf:3s}: 样本={res['样本量']:6d}, D={res['分形维数']:.4f}, "
+                  f"H(从D)={res['Hurst(从D)']:.4f}, Δα={res['多重分形宽度']:.4f}")
+
+        # 绘制多时间尺度对比图
+        plot_multi_timeframe_fractal(mtf_results, output_dir)
+
+    except Exception as e:
+        print(f"  多时间尺度对比失败: {e}")
+        results['多时间尺度对比'] = {'错误': str(e)}
+
+    # ----------------------------------------------------------
+    # 6. 总结
     # ----------------------------------------------------------
     print("\n" + "=" * 70)
     print("分析总结")

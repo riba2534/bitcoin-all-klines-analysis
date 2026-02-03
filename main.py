@@ -52,6 +52,15 @@ MODULE_REGISTRY = OrderedDict([
     ("time_series",  ("时序预测",               "time_series",           "run_time_series_analysis",  False)),
     ("causality",    ("因果检验",               "causality",             "run_causality_analysis",    False)),
     ("anomaly",      ("异常检测",               "anomaly",               "run_anomaly_analysis",      False)),
+    # === 新增8个扩展模块 ===
+    ("microstructure", ("市场微观结构",          "microstructure",        "run_microstructure_analysis", False)),
+    ("intraday",       ("日内模式分析",          "intraday_patterns",     "run_intraday_analysis",     False)),
+    ("scaling",        ("统计标度律",            "scaling_laws",          "run_scaling_analysis",      False)),
+    ("multiscale_vol", ("多尺度波动率",          "multi_scale_vol",       "run_multiscale_vol_analysis", False)),
+    ("entropy",        ("信息熵分析",            "entropy_analysis",      "run_entropy_analysis",      False)),
+    ("extreme",        ("极端值分析",            "extreme_value",         "run_extreme_value_analysis", False)),
+    ("cross_tf",       ("跨尺度关联",            "cross_timeframe",       "run_cross_timeframe_analysis", False)),
+    ("momentum_rev",   ("动量均值回归",          "momentum_reversion",    "run_momentum_reversion_analysis", False)),
 ])
 
 

@@ -15,8 +15,12 @@ from src.font_config import configure_chinese_font
 configure_chinese_font()
 from statsmodels.tsa.stattools import acf, pacf
 from statsmodels.stats.diagnostic import acorr_ljungbox
+from scipy import stats
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional, Any, Union
+
+from src.data_loader import load_klines
+from src.preprocessing import add_derived_features
 
 
 # ============================================================
@@ -501,6 +505,180 @@ def _plot_significant_lags_summary(
 
 
 # ============================================================
+# 多尺度 ACF 分析
+# ============================================================
+
+def multi_scale_acf_analysis(intervals: list = None) -> Dict:
+    """多尺度 ACF 对比分析"""
+    if intervals is None:
+        intervals = ['1h', '4h', '1d', '1w']
+
+    results = {}
+    for interval in intervals:
+        try:
+            df_tf = load_klines(interval)
+            prices = df_tf['close'].dropna()
+            returns = np.log(prices / prices.shift(1)).dropna()
+            abs_returns = returns.abs()
+
+            if len(returns) < 100:
+                continue
+
+            # 计算 ACF（对数收益率和绝对收益率）
+            acf_ret, _ = acf(returns.values, nlags=min(50, len(returns)//4), alpha=0.05, fft=True)
+            acf_abs, _ = acf(abs_returns.values, nlags=min(50, len(abs_returns)//4), alpha=0.05, fft=True)
+
+            # 计算自相关衰减速度（对 |r| 的 ACF 做指数衰减拟合）
+            lags = np.arange(1, len(acf_abs))
+            acf_vals = acf_abs[1:]
+            positive_mask = acf_vals > 0
+            if positive_mask.sum() > 5:
+                log_lags = np.log(lags[positive_mask])
+                log_acf = np.log(acf_vals[positive_mask])
+                slope, _, r_value, _, _ = stats.linregress(log_lags, log_acf)
+                decay_rate = -slope
+            else:
+                decay_rate = np.nan
+
+            results[interval] = {
+                'acf_returns': acf_ret,
+                'acf_abs_returns': acf_abs,
+                'decay_rate': decay_rate,
+                'n_samples': len(returns),
+            }
+        except Exception as e:
+            print(f"  {interval} 分析失败: {e}")
+
+    return results
+
+
+def plot_multi_scale_acf(ms_results: Dict, output_path: Path) -> None:
+    """
+    绘制多尺度 ACF 对比图
+
+    Parameters
+    ----------
+    ms_results : dict
+        multi_scale_acf_analysis 返回的结果字典
+    output_path : Path
+        输出文件路径
+    """
+    if not ms_results:
+        print("[多尺度ACF] 无数据，跳过绘图")
+        return
+
+    fig, axes = plt.subplots(2, 1, figsize=(16, 10))
+    fig.suptitle("多时间尺度 ACF 对比分析", fontsize=16, fontweight='bold', y=0.98)
+
+    colors = {'1h': '#1E88E5', '4h': '#43A047', '1d': '#E53935', '1w': '#8E24AA'}
+
+    # 上图：对数收益率 ACF
+    ax1 = axes[0]
+    for interval, data in ms_results.items():
+        acf_ret = data['acf_returns']
+        lags = np.arange(len(acf_ret))
+        color = colors.get(interval, '#000000')
+        ax1.plot(lags, acf_ret, label=f'{interval}', color=color, linewidth=1.5, alpha=0.8)
+
+    ax1.axhline(y=0, color='black', linewidth=0.5)
+    ax1.set_xlabel('滞后阶 (Lag)', fontsize=11)
+    ax1.set_ylabel('ACF', fontsize=11)
+    ax1.set_title('对数收益率 ACF 多尺度对比', fontsize=12, fontweight='bold')
+    ax1.legend(fontsize=10, loc='upper right')
+    ax1.grid(alpha=0.3)
+    ax1.tick_params(labelsize=9)
+
+    # 下图：绝对收益率 ACF
+    ax2 = axes[1]
+    for interval, data in ms_results.items():
+        acf_abs = data['acf_abs_returns']
+        lags = np.arange(len(acf_abs))
+        color = colors.get(interval, '#000000')
+        decay = data['decay_rate']
+        label_text = f"{interval} (衰减率={decay:.3f})" if not np.isnan(decay) else f"{interval}"
+        ax2.plot(lags, acf_abs, label=label_text, color=color, linewidth=1.5, alpha=0.8)
+
+    ax2.axhline(y=0, color='black', linewidth=0.5)
+    ax2.set_xlabel('滞后阶 (Lag)', fontsize=11)
+    ax2.set_ylabel('ACF', fontsize=11)
+    ax2.set_title('绝对收益率 ACF 多尺度对比（长记忆性检测）', fontsize=12, fontweight='bold')
+    ax2.legend(fontsize=10, loc='upper right')
+    ax2.grid(alpha=0.3)
+    ax2.tick_params(labelsize=9)
+
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
+    fig.savefig(output_path, dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    print(f"[多尺度ACF图] 已保存: {output_path}")
+
+
+def plot_acf_decay_vs_scale(ms_results: Dict, output_path: Path) -> None:
+    """
+    绘制自相关衰减速度 vs 时间尺度
+
+    Parameters
+    ----------
+    ms_results : dict
+        multi_scale_acf_analysis 返回的结果字典
+    output_path : Path
+        输出文件路径
+    """
+    if not ms_results:
+        print("[ACF衰减vs尺度] 无数据，跳过绘图")
+        return
+
+    # 提取时间尺度和衰减率
+    interval_mapping = {'1h': 1/24, '4h': 4/24, '1d': 1, '1w': 7}
+    scales = []
+    decay_rates = []
+    labels = []
+
+    for interval, data in ms_results.items():
+        if interval in interval_mapping and not np.isnan(data['decay_rate']):
+            scales.append(interval_mapping[interval])
+            decay_rates.append(data['decay_rate'])
+            labels.append(interval)
+
+    if len(scales) < 2:
+        print("[ACF衰减vs尺度] 有效数据点不足，跳过绘图")
+        return
+
+    fig, ax = plt.subplots(figsize=(12, 7))
+
+    # 对数坐标绘图
+    ax.scatter(scales, decay_rates, s=150, c=['#1E88E5', '#43A047', '#E53935', '#8E24AA'][:len(scales)],
+               alpha=0.8, edgecolors='black', linewidth=1.5, zorder=3)
+
+    # 标注点
+    for i, label in enumerate(labels):
+        ax.annotate(label, xy=(scales[i], decay_rates[i]),
+                   xytext=(8, 8), textcoords='offset points',
+                   fontsize=10, fontweight='bold', color='#333333')
+
+    # 拟合趋势线（如果有足够数据点）
+    if len(scales) >= 3:
+        log_scales = np.log(scales)
+        slope, intercept, r_value, _, _ = stats.linregress(log_scales, decay_rates)
+        x_fit = np.logspace(np.log10(min(scales)), np.log10(max(scales)), 100)
+        y_fit = slope * np.log(x_fit) + intercept
+        ax.plot(x_fit, y_fit, '--', color='#FF6F00', linewidth=2, alpha=0.6,
+                label=f'拟合趋势 (R²={r_value**2:.3f})')
+        ax.legend(fontsize=10)
+
+    ax.set_xscale('log')
+    ax.set_xlabel('时间尺度 (天, 对数)', fontsize=12, fontweight='bold')
+    ax.set_ylabel('ACF 幂律衰减指数 d', fontsize=12, fontweight='bold')
+    ax.set_title('自相关衰减速度 vs 时间尺度\n（检测跨尺度长记忆性）', fontsize=14, fontweight='bold')
+    ax.grid(alpha=0.3, which='both')
+    ax.tick_params(labelsize=10)
+
+    plt.tight_layout()
+    fig.savefig(output_path, dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    print(f"[ACF衰减vs尺度图] 已保存: {output_path}")
+
+
+# ============================================================
 # 主入口函数
 # ============================================================
 
@@ -720,6 +898,14 @@ def run_acf_analysis(
         n_obs=len(df.dropna(subset=["log_return"])),
         output_path=output_dir / "significant_lags_heatmap.png",
     )
+
+    # 4) 多尺度 ACF 分析
+    print("\n多尺度 ACF 对比分析...")
+    ms_results = multi_scale_acf_analysis(['1h', '4h', '1d', '1w'])
+    if ms_results:
+        plot_multi_scale_acf(ms_results, output_dir / "acf_multi_scale.png")
+        plot_acf_decay_vs_scale(ms_results, output_dir / "acf_decay_vs_scale.png")
+    results["multi_scale"] = ms_results
 
     print()
     print("=" * 70)

@@ -307,6 +307,11 @@ def multi_timeframe_hurst(intervals: List[str] = None) -> Dict[str, Dict[str, fl
 
             returns = log_returns(prices).values
 
+            # 对1m数据进行截断，避免计算量过大
+            if interval == '1m' and len(returns) > 100000:
+                print(f"  {interval} 数据量较大（{len(returns)}条），截取最后100000条")
+                returns = returns[-100000:]
+
             # R/S分析
             h_rs, _, _ = rs_hurst(returns)
             # DFA分析
@@ -416,9 +421,11 @@ def plot_multi_timeframe(results: Dict[str, Dict[str, float]],
     h_avg = [results[k]['平均Hurst'] for k in intervals]
 
     x = np.arange(len(intervals))
-    width = 0.25
+    # 动态调整柱状图宽度
+    width = min(0.25, 0.8 / 3)  # 3组柱状图，确保不重叠
 
-    fig, ax = plt.subplots(figsize=(12, 7))
+    # 使用更宽的图支持15个尺度
+    fig, ax = plt.subplots(figsize=(16, 8))
 
     bars1 = ax.bar(x - width, h_rs, width, label='R/S Hurst', color='steelblue', alpha=0.8)
     bars2 = ax.bar(x, h_dfa, width, label='DFA Hurst', color='coral', alpha=0.8)
@@ -429,22 +436,109 @@ def plot_multi_timeframe(results: Dict[str, Dict[str, float]],
     ax.axhline(y=TREND_THRESHOLD, color='green', linestyle=':', alpha=0.4)
     ax.axhline(y=MEAN_REV_THRESHOLD, color='red', linestyle=':', alpha=0.4)
 
-    # 在柱状图上标注数值
+    # 在柱状图上标注数值（当柱状图数量较多时减小字体）
+    fontsize_annot = 7 if len(intervals) > 8 else 9
     for bars in [bars1, bars2, bars3]:
         for bar in bars:
             height = bar.get_height()
             ax.annotate(f'{height:.3f}',
                         xy=(bar.get_x() + bar.get_width() / 2, height),
                         xytext=(0, 3), textcoords="offset points",
-                        ha='center', va='bottom', fontsize=9)
+                        ha='center', va='bottom', fontsize=fontsize_annot)
 
     ax.set_xlabel('时间框架', fontsize=12)
     ax.set_ylabel('Hurst指数', fontsize=12)
     ax.set_title('BTC 多时间框架 Hurst指数对比', fontsize=13)
     ax.set_xticks(x)
-    ax.set_xticklabels(intervals)
+    ax.set_xticklabels(intervals, rotation=45, ha='right')  # X轴标签旋转45度避免重叠
     ax.legend(fontsize=11)
     ax.grid(True, alpha=0.3, axis='y')
+
+    fig.tight_layout()
+    filepath = output_dir / filename
+    fig.savefig(filepath, dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    print(f"  已保存: {filepath}")
+
+
+def plot_hurst_vs_scale(results: Dict[str, Dict[str, float]],
+                        output_dir: Path, filename: str = "hurst_vs_scale.png"):
+    """
+    绘制Hurst指数 vs log(Δt) 标度关系图
+
+    Parameters
+    ----------
+    results : dict
+        多时间框架Hurst分析结果
+    output_dir : Path
+        输出目录
+    filename : str
+        输出文件名
+    """
+    if not results:
+        print("  没有可绘制的标度关系结果")
+        return
+
+    # 各粒度对应的采样周期（天）
+    INTERVAL_DAYS = {
+        "1m": 1/(24*60), "3m": 3/(24*60), "5m": 5/(24*60), "15m": 15/(24*60),
+        "30m": 30/(24*60), "1h": 1/24, "2h": 2/24, "4h": 4/24, "6h": 6/24,
+        "8h": 8/24, "12h": 12/24, "1d": 1, "3d": 3, "1w": 7, "1mo": 30
+    }
+
+    # 提取数据
+    intervals = list(results.keys())
+    log_dt = [np.log10(INTERVAL_DAYS.get(k, 1)) for k in intervals]
+    h_rs = [results[k]['R/S Hurst'] for k in intervals]
+    h_dfa = [results[k]['DFA Hurst'] for k in intervals]
+
+    # 排序（按log_dt）
+    sorted_idx = np.argsort(log_dt)
+    log_dt = np.array(log_dt)[sorted_idx]
+    h_rs = np.array(h_rs)[sorted_idx]
+    h_dfa = np.array(h_dfa)[sorted_idx]
+    intervals_sorted = [intervals[i] for i in sorted_idx]
+
+    fig, ax = plt.subplots(figsize=(12, 8))
+
+    # 绘制数据点和连线
+    ax.plot(log_dt, h_rs, 'o-', color='steelblue', linewidth=2, markersize=8,
+            label='R/S Hurst', alpha=0.8)
+    ax.plot(log_dt, h_dfa, 's-', color='coral', linewidth=2, markersize=8,
+            label='DFA Hurst', alpha=0.8)
+
+    # H=0.5 参考线
+    ax.axhline(y=0.5, color='black', linestyle='--', alpha=0.5, linewidth=1.5,
+               label='H=0.5 (随机游走)')
+    ax.axhline(y=TREND_THRESHOLD, color='green', linestyle=':', alpha=0.4)
+    ax.axhline(y=MEAN_REV_THRESHOLD, color='red', linestyle=':', alpha=0.4)
+
+    # 线性拟合
+    if len(log_dt) >= 3:
+        # R/S拟合
+        coeffs_rs = np.polyfit(log_dt, h_rs, 1)
+        fit_rs = np.polyval(coeffs_rs, log_dt)
+        ax.plot(log_dt, fit_rs, '--', color='steelblue', alpha=0.4, linewidth=1.5,
+                label=f'R/S拟合: H={coeffs_rs[0]:.4f}·log(Δt) + {coeffs_rs[1]:.4f}')
+
+        # DFA拟合
+        coeffs_dfa = np.polyfit(log_dt, h_dfa, 1)
+        fit_dfa = np.polyval(coeffs_dfa, log_dt)
+        ax.plot(log_dt, fit_dfa, '--', color='coral', alpha=0.4, linewidth=1.5,
+                label=f'DFA拟合: H={coeffs_dfa[0]:.4f}·log(Δt) + {coeffs_dfa[1]:.4f}')
+
+    ax.set_xlabel('log₁₀(Δt) - 采样周期的对数（天）', fontsize=12)
+    ax.set_ylabel('Hurst指数', fontsize=12)
+    ax.set_title('BTC Hurst指数 vs 时间尺度 标度关系', fontsize=13)
+    ax.legend(fontsize=10, loc='best')
+    ax.grid(True, alpha=0.3)
+
+    # 添加X轴标签（显示时间框架名称）
+    ax2 = ax.twiny()
+    ax2.set_xlim(ax.get_xlim())
+    ax2.set_xticks(log_dt)
+    ax2.set_xticklabels(intervals_sorted, rotation=45, ha='left', fontsize=9)
+    ax2.set_xlabel('时间框架', fontsize=11)
 
     fig.tight_layout()
     filepath = output_dir / filename
@@ -592,11 +686,16 @@ def run_hurst_analysis(df: pd.DataFrame, output_dir: str = "output/hurst") -> Di
     print("【5】多时间框架Hurst指数")
     print("-" * 50)
 
-    mt_results = multi_timeframe_hurst(['1h', '4h', '1d', '1w'])
+    # 使用全部15个粒度
+    ALL_INTERVALS = ['1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '8h', '12h', '1d', '3d', '1w', '1mo']
+    mt_results = multi_timeframe_hurst(ALL_INTERVALS)
     results['多时间框架'] = mt_results
 
     # 绘制多时间框架对比图
     plot_multi_timeframe(mt_results, output_dir)
+
+    # 绘制Hurst vs 时间尺度标度关系图
+    plot_hurst_vs_scale(mt_results, output_dir)
 
     # ----------------------------------------------------------
     # 7. 总结

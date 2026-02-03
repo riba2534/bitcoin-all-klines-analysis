@@ -19,8 +19,11 @@ from statsmodels.tsa.stattools import acf
 from pathlib import Path
 from typing import Optional
 
-from src.data_loader import load_daily
+from src.data_loader import load_daily, load_klines
 from src.preprocessing import log_returns
+
+# 时间尺度（以天为单位）用于X轴
+INTERVAL_DAYS = {"5m": 5/(24*60), "1h": 1/24, "4h": 4/24, "1d": 1.0}
 
 
 # ============================================================
@@ -129,6 +132,48 @@ def volatility_acf_power_law(returns: pd.Series,
         'acf_positive': acf_pos,
         'is_long_memory': 0 < d < 1,
     }
+    return results
+
+
+def multi_scale_volatility_analysis(intervals=None):
+    """多尺度波动率聚集分析"""
+    if intervals is None:
+        intervals = ['5m', '1h', '4h', '1d']
+
+    results = {}
+    for interval in intervals:
+        try:
+            print(f"\n  分析 {interval} 尺度波动率...")
+            df_tf = load_klines(interval)
+            prices = df_tf['close'].dropna()
+            returns = np.log(prices / prices.shift(1)).dropna()
+
+            # 对大数据截断
+            if len(returns) > 200000:
+                returns = returns.iloc[-200000:]
+
+            if len(returns) < 200:
+                print(f"    {interval} 数据不足，跳过")
+                continue
+
+            # ACF 幂律衰减（长记忆参数 d）
+            acf_result = volatility_acf_power_law(returns, max_lags=min(200, len(returns)//5))
+
+            results[interval] = {
+                'd': acf_result['d'],
+                'd_nonlinear': acf_result.get('d_nonlinear', np.nan),
+                'r_squared': acf_result['r_squared'],
+                'is_long_memory': acf_result['is_long_memory'],
+                'n_samples': len(returns),
+            }
+
+            print(f"    d={acf_result['d']:.4f}, R²={acf_result['r_squared']:.4f}, long_memory={acf_result['is_long_memory']}")
+
+        except FileNotFoundError:
+            print(f"    {interval} 数据文件不存在，跳过")
+        except Exception as e:
+            print(f"    {interval} 分析失败: {e}")
+
     return results
 
 
@@ -444,6 +489,60 @@ def plot_leverage_effect(leverage_results: dict, output_dir: Path):
     print(f"[保存] {output_dir / 'leverage_effect_scatter.png'}")
 
 
+def plot_long_memory_vs_scale(ms_results: dict, output_dir: Path):
+    """绘制波动率长记忆参数 d vs 时间尺度"""
+    if not ms_results:
+        print("[警告] 无多尺度分析结果可绘制")
+        return
+
+    # 提取数据
+    intervals = list(ms_results.keys())
+    d_values = [ms_results[i]['d'] for i in intervals]
+    time_scales = [INTERVAL_DAYS.get(i, np.nan) for i in intervals]
+
+    # 过滤掉无效值
+    valid_data = [(t, d, i) for t, d, i in zip(time_scales, d_values, intervals)
+                  if not np.isnan(t) and not np.isnan(d)]
+
+    if not valid_data:
+        print("[警告] 无有效数据用于绘制长记忆参数图")
+        return
+
+    time_scales_valid, d_values_valid, intervals_valid = zip(*valid_data)
+
+    # 绘图
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    # 散点图（对数X轴）
+    ax.scatter(time_scales_valid, d_values_valid, s=100, color='steelblue',
+               edgecolors='black', linewidth=1.5, alpha=0.8, zorder=3)
+
+    # 标注每个点的时间尺度
+    for t, d, interval in zip(time_scales_valid, d_values_valid, intervals_valid):
+        ax.annotate(interval, (t, d), xytext=(5, 5),
+                   textcoords='offset points', fontsize=10, color='darkblue')
+
+    # 参考线
+    ax.axhline(y=0, color='gray', linestyle='--', linewidth=1, alpha=0.6,
+              label='d=0 (无长记忆)', zorder=1)
+    ax.axhline(y=0.5, color='orange', linestyle='--', linewidth=1, alpha=0.6,
+              label='d=0.5 (临界值)', zorder=1)
+
+    # 设置对数X轴
+    ax.set_xscale('log')
+    ax.set_xlabel('时间尺度（天，对数刻度）', fontsize=12)
+    ax.set_ylabel('长记忆参数 d', fontsize=12)
+    ax.set_title('波动率长记忆参数 vs 时间尺度', fontsize=14)
+    ax.legend(fontsize=10, loc='best')
+    ax.grid(True, alpha=0.3, which='both')
+
+    fig.tight_layout()
+    fig.savefig(output_dir / 'volatility_long_memory_vs_scale.png',
+                dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    print(f"[保存] {output_dir / 'volatility_long_memory_vs_scale.png'}")
+
+
 # ============================================================
 # 6. 结果打印
 # ============================================================
@@ -615,6 +714,12 @@ def run_volatility_analysis(df: pd.DataFrame, output_dir: str = "output/volatili
     print_leverage_results(leverage_results)
     plot_leverage_effect(leverage_results, output_dir)
 
+    # --- 多尺度波动率分析 ---
+    print("\n>>> 多尺度波动率聚集分析 (5m, 1h, 4h, 1d)...")
+    ms_vol_results = multi_scale_volatility_analysis(['5m', '1h', '4h', '1d'])
+    if ms_vol_results:
+        plot_long_memory_vs_scale(ms_vol_results, output_dir)
+
     print("\n" + "=" * 60)
     print("波动率分析完成！")
     print(f"图表已保存至: {output_dir.resolve()}")
@@ -626,6 +731,7 @@ def run_volatility_analysis(df: pd.DataFrame, output_dir: str = "output/volatili
         'acf_power_law': acf_results,
         'model_comparison': model_results,
         'leverage_effect': leverage_results,
+        'multi_scale_volatility': ms_vol_results,
     }
 
 
