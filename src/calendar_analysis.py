@@ -12,9 +12,8 @@ from pathlib import Path
 from itertools import combinations
 from scipy import stats
 
-# 中文显示配置
-plt.rcParams['font.sans-serif'] = ['Arial Unicode MS', 'SimHei', 'DejaVu Sans']
-plt.rcParams['axes.unicode_minus'] = False
+from src.font_config import configure_chinese_font
+configure_chinese_font()
 
 # 星期名称映射（中英文）
 WEEKDAY_NAMES_CN = {0: '周一', 1: '周二', 2: '周三', 3: '周四',

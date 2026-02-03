@@ -10,6 +10,9 @@ import pandas as pd
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+
+from src.font_config import configure_chinese_font
+configure_chinese_font()
 from statsmodels.tsa.stattools import acf, pacf
 from statsmodels.stats.diagnostic import acorr_ljungbox
 from pathlib import Path

@@ -8,6 +8,9 @@ K线形态识别与统计验证模块
 import matplotlib
 matplotlib.use('Agg')
 
+from src.font_config import configure_chinese_font
+configure_chinese_font()
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt

@@ -543,9 +543,8 @@ def run_causality_analysis(
     print(f"因果变量对数: {len(CAUSALITY_PAIRS)}")
     print(f"总检验次数（含所有滞后）: {len(CAUSALITY_PAIRS) * len(TEST_LAGS)}")
 
-    # 设置中文字体
-    plt.rcParams['font.sans-serif'] = ['Arial Unicode MS', 'SimHei', 'DejaVu Sans']
-    plt.rcParams['axes.unicode_minus'] = False
+    from src.font_config import configure_chinese_font
+    configure_chinese_font()
 
     # --- 日线级 Granger 因果检验 ---
     print("\n>>> [1/4] 执行日线级 Granger 因果检验...")

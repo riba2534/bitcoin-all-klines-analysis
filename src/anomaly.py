@@ -705,9 +705,8 @@ def run_anomaly_analysis(
     print(f"数据范围: {df.index.min()} ~ {df.index.max()}")
     print(f"样本数量: {len(df)}")
 
-    # 设置中文字体
-    plt.rcParams['font.sans-serif'] = ['Arial Unicode MS', 'SimHei', 'DejaVu Sans']
-    plt.rcParams['axes.unicode_minus'] = False
+    from src.font_config import configure_chinese_font
+    configure_chinese_font()
 
     # --- 集成异常检测 ---
     print("\n>>> [1/5] 执行集成异常检测...")

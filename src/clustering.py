@@ -632,9 +632,8 @@ def run_clustering_analysis(df: pd.DataFrame, output_dir: "str | Path" = "output
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # 设置中文字体（macOS）
-    plt.rcParams['font.sans-serif'] = ['Arial Unicode MS', 'SimHei', 'DejaVu Sans']
-    plt.rcParams['axes.unicode_minus'] = False
+    from src.font_config import configure_chinese_font
+    configure_chinese_font()
 
     print("=" * 60)
     print("  BTC 市场状态聚类与马尔可夫链分析")

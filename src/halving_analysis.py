@@ -10,9 +10,8 @@ import matplotlib.ticker as mticker
 from pathlib import Path
 from scipy import stats
 
-# 中文显示配置
-plt.rcParams['font.sans-serif'] = ['Arial Unicode MS', 'SimHei', 'DejaVu Sans']
-plt.rcParams['axes.unicode_minus'] = False
+from src.font_config import configure_chinese_font
+configure_chinese_font()
 
 # BTC 减半日期（数据范围 2017-2026 内的两次减半）
 HALVING_DATES = [

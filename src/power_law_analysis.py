@@ -15,9 +15,8 @@ from scipy.optimize import curve_fit
 from pathlib import Path
 from typing import Tuple, Dict
 
-# 中文显示支持
-plt.rcParams['font.sans-serif'] = ['Arial Unicode MS', 'SimHei', 'DejaVu Sans']
-plt.rcParams['axes.unicode_minus'] = False
+from src.font_config import configure_chinese_font
+configure_chinese_font()
 
 
 def _compute_days_since_start(df: pd.DataFrame) -> np.ndarray:

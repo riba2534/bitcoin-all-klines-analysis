@@ -446,9 +446,8 @@ def run_returns_analysis(df: pd.DataFrame, output_dir: str = "output/returns"):
     # --- 生成可视化 ---
     print("\n>>> 生成可视化图表...")
 
-    # 设置中文字体（兼容多系统）
-    plt.rcParams['font.sans-serif'] = ['Arial Unicode MS', 'SimHei', 'DejaVu Sans']
-    plt.rcParams['axes.unicode_minus'] = False
+    from src.font_config import configure_chinese_font
+    configure_chinese_font()
 
     plot_histogram_vs_normal(daily_returns, output_dir)
     plot_qq(daily_returns, output_dir)

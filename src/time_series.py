@@ -643,9 +643,8 @@ def run_time_series_analysis(df: pd.DataFrame, output_dir: "str | Path" = "outpu
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # 设置中文字体（macOS）
-    plt.rcParams['font.sans-serif'] = ['Arial Unicode MS', 'SimHei', 'DejaVu Sans']
-    plt.rcParams['axes.unicode_minus'] = False
+    from src.font_config import configure_chinese_font
+    configure_chinese_font()
 
     print("=" * 60)
     print("  BTC 时间序列预测分析")

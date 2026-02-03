@@ -55,11 +55,8 @@ EVIDENCE_COLORS = {
 def apply_style():
     """应用全局matplotlib样式"""
     plt.rcParams.update(STYLE_CONFIG)
-    try:
-        plt.rcParams["font.sans-serif"] = ["Arial Unicode MS", "SimHei", "DejaVu Sans"]
-        plt.rcParams["axes.unicode_minus"] = False
-    except Exception:
-        pass
+    from src.font_config import configure_chinese_font
+    configure_chinese_font()
 
 
 def ensure_dir(path):

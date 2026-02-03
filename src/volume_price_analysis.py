@@ -15,9 +15,8 @@ from statsmodels.tsa.stattools import grangercausalitytests
 from pathlib import Path
 from typing import Dict, List, Tuple
 
-# 中文显示支持
-plt.rcParams['font.sans-serif'] = ['Arial Unicode MS', 'SimHei', 'DejaVu Sans']
-plt.rcParams['axes.unicode_minus'] = False
+from src.font_config import configure_chinese_font
+configure_chinese_font()
 
 
 # =============================================================================

@@ -15,8 +15,23 @@ BTC/USDT 价格规律性分析 — 综合结论报告
 ----------------------------------------------------------------------
 模块                                 得分         强度      发现数
 ----------------------------------------------------------------------
+fft                              0.00       none        0
+fractal                          0.00       none        0
+power_law                        0.00       none        0
+wavelet                          0.00       none        0
+acf                              0.00       none        0
+returns                          0.00       none        0
+volatility                       0.00       none        0
+hurst                            0.00       none        0
+volume_price                     0.00       none        0
+time_series                      0.00       none        0
+causality                        0.00       none        0
+calendar                         0.00       none        0
+halving                          0.00       none        0
 indicators                       0.00       none        0
 patterns                         0.00       none        0
+clustering                       0.00       none        0
+anomaly                          0.00       none        0
 ----------------------------------------------------------------------
 
 ## 强证据规律（可重复、有经济意义）:
@@ -26,8 +41,23 @@ patterns                         0.00       none        0
   （无）
 
 ## 弱证据/不显著:
-  * indicators
+  * fft
+  * time_series
+  * clustering
   * patterns
+  * indicators
+  * halving
+  * calendar
+  * causality
+  * volume_price
+  * fractal
+  * hurst
+  * volatility
+  * returns
+  * acf
+  * wavelet
+  * power_law
+  * anomaly
 
 ======================================================================
 注: 得分基于各模块自报告的统计检验结果。

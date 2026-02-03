@@ -584,9 +584,8 @@ def run_volatility_analysis(df: pd.DataFrame, output_dir: str = "output/volatili
     daily_returns = log_returns(df['close'])
     print(f"日对数收益率样本数: {len(daily_returns)}")
 
-    # 设置中文字体（兼容多系统）
-    plt.rcParams['font.sans-serif'] = ['Arial Unicode MS', 'SimHei', 'DejaVu Sans']
-    plt.rcParams['axes.unicode_minus'] = False
+    from src.font_config import configure_chinese_font
+    configure_chinese_font()
 
     # 固定随机种子以保证杠杆效应散点图采样可复现
     np.random.seed(42)
