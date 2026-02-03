@@ -539,6 +539,26 @@ def run_calendar_analysis(
     # 4. 季度 & 月初月末效应
     analyze_quarter_and_month_boundary(df, output_dir)
 
+    # 稳健性检查：前半段 vs 后半段效应一致性
+    midpoint = len(df) // 2
+    df_first_half = df.iloc[:midpoint]
+    df_second_half = df.iloc[midpoint:]
+    print(f"\n  [稳健性检查] 数据前半段 vs 后半段效应一致性")
+    print(f"    前半段: {df_first_half.index.min().date()} ~ {df_first_half.index.max().date()}")
+    print(f"    后半段: {df_second_half.index.min().date()} ~ {df_second_half.index.max().date()}")
+
+    # 比较前后半段的星期效应一致性
+    if 'log_return' in df.columns:
+        df_work = df.dropna(subset=['log_return']).copy()
+        df_work['weekday'] = df_work.index.dayofweek
+        mid_work = len(df_work) // 2
+        first_half_means = df_work.iloc[:mid_work].groupby('weekday')['log_return'].mean()
+        second_half_means = df_work.iloc[mid_work:].groupby('weekday')['log_return'].mean()
+        # 检查各星期均值符号是否一致
+        consistent = (first_half_means * second_half_means > 0).sum()
+        total = len(first_half_means)
+        print(f"    星期效应符号一致性: {consistent}/{total} 个星期方向一致")
+
     print("\n" + "#" * 70)
     print("#  日历效应分析完成")
     print("#" * 70)

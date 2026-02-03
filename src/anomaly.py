@@ -21,7 +21,7 @@ from typing import Optional, Dict, List, Tuple
 from sklearn.ensemble import IsolationForest, RandomForestClassifier
 from sklearn.neighbors import LocalOutlierFactor
 from sklearn.preprocessing import StandardScaler
-from sklearn.model_selection import cross_val_predict, StratifiedKFold
+from sklearn.model_selection import TimeSeriesSplit
 from sklearn.metrics import roc_auc_score, roc_curve
 
 from src.data_loader import load_klines
@@ -323,9 +323,9 @@ def extract_precursor_features(
 
     X = pd.DataFrame(precursor_features, index=df_aligned.index)
 
-    # 标签: 未来是否出现异常（shift(-1) 使得特征是"之前"的）
-    # 我们用当前特征预测当天是否异常
-    y = labels_aligned
+    # 标签: 预测次日是否出现异常（前瞻1天）
+    y = labels_aligned.shift(-1).dropna()
+    X = X.loc[y.index]  # 对齐特征和标签
 
     # 去除 NaN
     valid_mask = X.notna().all(axis=1) & y.notna()
@@ -360,17 +360,13 @@ def train_precursor_classifier(
         print(f"  [警告] 样本不足 (n={len(X)}, 正例={y.sum()})，跳过分类器训练")
         return {}
 
-    # 标准化
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
-
-    # 分层 K 折
+    # 时间序列交叉验证
     n_splits = min(5, int(y.sum()))
     if n_splits < 2:
         print("  [警告] 正例数过少，无法进行交叉验证")
         return {}
 
-    cv = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
+    cv = TimeSeriesSplit(n_splits=n_splits)
 
     clf = RandomForestClassifier(
         n_estimators=200,
@@ -381,27 +377,41 @@ def train_precursor_classifier(
         n_jobs=-1,
     )
 
-    # 交叉验证预测概率
+    # 手动交叉验证（每折单独 fit scaler，防止数据泄漏）
     try:
-        y_prob = cross_val_predict(clf, X_scaled, y, cv=cv, method='predict_proba')[:, 1]
-        auc = roc_auc_score(y, y_prob)
+        y_prob = np.full(len(y), np.nan)
+        for train_idx, val_idx in cv.split(X):
+            X_train, X_val = X.iloc[train_idx], X.iloc[val_idx]
+            y_train, y_val = y.iloc[train_idx], y.iloc[val_idx]
+            scaler = StandardScaler()
+            X_train_scaled = scaler.fit_transform(X_train)
+            X_val_scaled = scaler.transform(X_val)
+            clf.fit(X_train_scaled, y_train)
+            y_prob[val_idx] = clf.predict_proba(X_val_scaled)[:, 1]
+        # 去除未被验证的样本（如有）
+        valid_prob_mask = ~np.isnan(y_prob)
+        y_eval = y[valid_prob_mask]
+        y_prob_eval = y_prob[valid_prob_mask]
+        auc = roc_auc_score(y_eval, y_prob_eval)
     except Exception as e:
         print(f"  [错误] 交叉验证失败: {e}")
         return {}
 
     # 在全量数据上训练获取特征重要性
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
     clf.fit(X_scaled, y)
     importances = pd.Series(clf.feature_importances_, index=X.columns)
     importances = importances.sort_values(ascending=False)
 
     # ROC 曲线数据
-    fpr, tpr, thresholds = roc_curve(y, y_prob)
+    fpr, tpr, thresholds = roc_curve(y_eval, y_prob_eval)
 
     results = {
         'auc': auc,
         'feature_importances': importances,
-        'y_true': y,
-        'y_prob': y_prob,
+        'y_true': y_eval,
+        'y_prob': y_prob_eval,
         'fpr': fpr,
         'tpr': tpr,
     }

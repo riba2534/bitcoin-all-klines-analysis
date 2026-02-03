@@ -46,7 +46,7 @@
 
 ## 1. 数据概览
 
-![价格概览](output/price_overview.png)
+![价格概览](../output/price_overview.png)
 
 | 指标 | 值 |
 |------|-----|
@@ -89,9 +89,9 @@
 
 4σ 极端事件的出现频率是正态分布预测的近 87 倍，证明 BTC 收益率具有显著的厚尾特征。
 
-![收益率直方图 vs 正态](output/returns/returns_histogram_vs_normal.png)
+![收益率直方图 vs 正态](../output/returns/returns_histogram_vs_normal.png)
 
-![QQ图](output/returns/returns_qq_plot.png)
+![QQ图](../output/returns/returns_qq_plot.png)
 
 ### 2.3 多时间尺度分布
 
@@ -102,9 +102,9 @@
 | 1d | 3,090 | 0.000935 | 0.0361 | 15.65 | -0.97 |
 | 1w | 434 | 0.006812 | 0.0959 | 2.08 | -0.44 |
 
-**关键发现**: 峰度随时间尺度增大从 35.88 → 2.08 单调递减，趋向正态分布，符合中心极限定理的聚合正态性。
+**关键发现**: 峰度随时间尺度增大从 35.88 → 2.08 单调递减，趋向正态分布。这一趋势与聚合正态性一致，但由于 BTC 收益率存在显著的自相关（第 3 章）和波动率聚集，严格的 CLT 独立同分布前提不满足，收敛速度可能慢于独立序列。
 
-![多时间尺度分布](output/returns/multi_timeframe_distributions.png)
+![多时间尺度分布](../output/returns/multi_timeframe_distributions.png)
 
 ---
 
@@ -121,7 +121,7 @@
 
 持续性 0.973 接近 1，意味着波动率冲击衰减极慢 — 一次大幅波动的影响需要数十天才能消散。
 
-![GARCH条件波动率](output/returns/garch_conditional_volatility.png)
+![GARCH条件波动率](../output/returns/garch_conditional_volatility.png)
 
 ### 3.2 波动率 ACF 幂律衰减
 
@@ -133,9 +133,9 @@
 | p 值 | 5.82e-25 |
 | 长记忆性判断 (0 < d < 1) | **是** |
 
-绝对收益率的自相关以幂律速度缓慢衰减，证实波动率具有长记忆特征。标准 GARCH 模型的指数衰减假设可能不足以完整刻画这一特征。
+绝对收益率的自相关以幂律速度缓慢衰减，支持波动率具有长记忆特征。线性拟合（d=0.635）和非线性拟合（d=0.345）差异较大，这是因为线性拟合在对数空间中对远端滞后阶赋予了更高权重，而非线性拟合更好地捕捉了短程衰减特征。FIGARCH 建模建议参考非线性拟合值 d≈0.34。标准 GARCH 模型的指数衰减假设不足以完整刻画这一特征。
 
-![ACF幂律衰减](output/volatility/acf_power_law_fit.png)
+![ACF幂律衰减](../output/volatility/acf_power_law_fit.png)
 
 ### 3.3 ACF 分析证据
 
@@ -148,11 +148,11 @@
 
 绝对收益率前 88 阶 ACF 均显著（100 阶中的 88 阶），成交量全部 100 阶均显著（ACF(1) = 0.892），证明极强的非线性依赖和波动聚集。
 
-![ACF分析](output/acf/acf_grid.png)
+![ACF分析](../output/acf/acf_grid.png)
 
-![PACF分析](output/acf/pacf_grid.png)
+![PACF分析](../output/acf/pacf_grid.png)
 
-![GARCH模型对比](output/volatility/garch_model_comparison.png)
+![GARCH模型对比](../output/volatility/garch_model_comparison.png)
 
 ### 3.4 杠杆效应
 
@@ -164,7 +164,7 @@
 
 仅在 5 天窗口内观测到弱杠杆效应（下跌后波动率上升），效应量极小（r=-0.062），比传统股市弱得多。
 
-![杠杆效应](output/volatility/leverage_effect_scatter.png)
+![杠杆效应](../output/volatility/leverage_effect_scatter.png)
 
 ---
 
@@ -193,11 +193,11 @@
 
 7 天周期分量解释了最多的方差（14.9%），但总体所有周期分量加起来仅解释 ~22% 的方差，约 78% 的波动无法用周期性解释。
 
-![FFT功率谱](output/fft/fft_power_spectrum.png)
+![FFT功率谱](../output/fft/fft_power_spectrum.png)
 
-![多时间框架FFT](output/fft/fft_multi_timeframe.png)
+![多时间框架FFT](../output/fft/fft_multi_timeframe.png)
 
-![带通滤波分量](output/fft/fft_bandpass_components.png)
+![带通滤波分量](../output/fft/fft_bandpass_components.png)
 
 ### 4.2 小波变换 (CWT)
 
@@ -215,11 +215,11 @@
 
 这些周期虽然通过了 95% 显著性检验，但功率/阈值比值仅 1.01~1.15x，属于**边际显著**，实际应用价值有限。
 
-![小波时频图](output/wavelet/wavelet_scalogram.png)
+![小波时频图](../output/wavelet/wavelet_scalogram.png)
 
-![全局小波谱](output/wavelet/wavelet_global_spectrum.png)
+![全局小波谱](../output/wavelet/wavelet_global_spectrum.png)
 
-![关键周期追踪](output/wavelet/wavelet_key_periods.png)
+![关键周期追踪](../output/wavelet/wavelet_key_periods.png)
 
 ---
 
@@ -261,11 +261,11 @@ Hurst 指数随时间尺度增大而增大，周线级别（H=0.67）呈现更�
 
 几乎所有时间窗口都显示弱趋势性，没有任何窗口进入均值回归状态。
 
-![R/S对数-对数图](output/hurst/hurst_rs_loglog.png)
+![R/S对数-对数图](../output/hurst/hurst_rs_loglog.png)
 
-![滚动Hurst](output/hurst/hurst_rolling.png)
+![滚动Hurst](../output/hurst/hurst_rolling.png)
 
-![多时间框架Hurst](output/hurst/hurst_multi_timeframe.png)
+![多时间框架Hurst](../output/hurst/hurst_multi_timeframe.png)
 
 ### 5.2 分形维度
 
@@ -280,11 +280,11 @@ BTC 的分形维数 D=1.34 低于随机游走的 D=1.38（序列更光滑），�
 
 **多尺度自相似性**：峰度从尺度 1 的 15.65 降至尺度 50 的 -0.25，大尺度下趋于正态，自相似性有限。
 
-![盒计数分形维度](output/fractal/fractal_box_counting.png)
+![盒计数分形维度](../output/fractal/fractal_box_counting.png)
 
-![蒙特卡洛对比](output/fractal/fractal_monte_carlo.png)
+![蒙特卡洛对比](../output/fractal/fractal_monte_carlo.png)
 
-![自相似性分析](output/fractal/fractal_self_similarity.png)
+![自相似性分析](../output/fractal/fractal_self_similarity.png)
 
 ---
 
@@ -318,11 +318,11 @@ BTC 的分形维数 D=1.34 低于随机游走的 D=1.38（序列更光滑），�
 
 AIC/BIC 均支持指数增长模型优于幂律模型（差值 493），说明 BTC 的长期增长更接近指数而非幂律。
 
-![对数-对数回归](output/power_law/power_law_loglog_regression.png)
+![对数-对数回归](../output/power_law/power_law_loglog_regression.png)
 
-![幂律走廊](output/power_law/power_law_corridor.png)
+![幂律走廊](../output/power_law/power_law_corridor.png)
 
-![模型对比](output/power_law/power_law_model_comparison.png)
+![模型对比](../output/power_law/power_law_model_comparison.png)
 
 ---
 
@@ -337,7 +337,7 @@ AIC/BIC 均支持指数增长模型优于幂律模型（差值 493），说明 B
 
 成交量放大伴随大幅波动，中等正相关且极其显著。
 
-![量价散点图](output/volume_price/volume_return_scatter.png)
+![量价散点图](../output/volume_price/volume_return_scatter.png)
 
 ### 7.2 Granger 因果检验
 
@@ -356,9 +356,9 @@ AIC/BIC 均支持指数增长模型优于幂律模型（差值 493），说明 B
 
 **核心发现**: 因果关系是**单向**的 — 波动率/收益率 Granger-cause 成交量和 taker_buy_ratio，反向不成立。这意味着成交量是价格波动的结果而非原因。
 
-![Granger p值热力图](output/causality/granger_pvalue_heatmap.png)
+![Granger p值热力图](../output/causality/granger_pvalue_heatmap.png)
 
-![因果网络图](output/causality/granger_causal_network.png)
+![因果网络图](../output/causality/granger_causal_network.png)
 
 ### 7.3 跨时间尺度因果
 
@@ -374,7 +374,7 @@ AIC/BIC 均支持指数增长模型优于幂律模型（差值 493），说明 B
 
 检测到 82 个价量背离信号（49 个顶背离 + 33 个底背离）。
 
-![OBV背离](output/volume_price/obv_divergence.png)
+![OBV背离](../output/volume_price/obv_divergence.png)
 
 ---
 
@@ -396,7 +396,7 @@ AIC/BIC 均支持指数增长模型优于幂律模型（差值 493），说明 B
 
 Bonferroni 校正后的 21 对 Mann-Whitney U 两两比较均不显著。
 
-![星期效应](output/calendar/calendar_weekday_effect.png)
+![星期效应](../output/calendar/calendar_weekday_effect.png)
 
 ### 8.2 月份效应
 
@@ -404,7 +404,7 @@ Bonferroni 校正后的 21 对 Mann-Whitney U 两两比较均不显著。
 
 10 月份均值收益率最高（+0.501%），8 月最低（-0.123%），但 66 对两两比较经 Bonferroni 校正后无一显著。
 
-![月份效应](output/calendar/calendar_month_effect.png)
+![月份效应](../output/calendar/calendar_month_effect.png)
 
 ### 8.3 小时效应
 
@@ -413,7 +413,7 @@ Bonferroni 校正后的 21 对 Mann-Whitney U 两两比较均不显著。
 
 日内小时效应在收益率和成交量上均显著存在。14:00 UTC 成交量最高（3,805 BTC），03:00-05:00 UTC 成交量最低（~1,980 BTC）。
 
-![小时效应](output/calendar/calendar_hour_effect.png)
+![小时效应](../output/calendar/calendar_hour_effect.png)
 
 ### 8.4 季度 & 月初月末效应
 
@@ -422,7 +422,7 @@ Bonferroni 校正后的 21 对 Mann-Whitney U 两两比较均不显著。
 | 季度 Kruskal-Wallis | 1.15 | 0.765 | 不显著 |
 | 月初 vs 月末 Mann-Whitney | 134,569 | 0.236 | 不显著 |
 
-![季度和月初月末效应](output/calendar/calendar_quarter_boundary_effect.png)
+![季度和月初月末效应](../output/calendar/calendar_quarter_boundary_effect.png)
 
 ### 日历效应总结
 
@@ -484,13 +484,13 @@ Bonferroni 校正后的 21 对 Mann-Whitney U 两两比较均不显著。
 
 两个周期的归一化价格轨迹高度相关（r=0.81），但仅 2 个样本无法做出因果推断。
 
-![归一化轨迹叠加](output/halving/halving_normalized_trajectories.png)
+![归一化轨迹叠加](../output/halving/halving_normalized_trajectories.png)
 
-![减半前后收益率](output/halving/halving_pre_post_returns.png)
+![减半前后收益率](../output/halving/halving_pre_post_returns.png)
 
-![累计收益率](output/halving/halving_cumulative_returns.png)
+![累计收益率](../output/halving/halving_cumulative_returns.png)
 
-![综合摘要](output/halving/halving_combined_summary.png)
+![综合摘要](../output/halving/halving_combined_summary.png)
 
 ---
 
@@ -523,11 +523,11 @@ Bonferroni 校正后的 21 对 Mann-Whitney U 两两比较均不显著。
 
 Top-10 IC 中有 9/10 方向一致，1 个（SMA_20_100）发生方向翻转。但所有 IC 值均在 [-0.10, +0.05] 范围内，效果量极小。
 
-![IC分布-训练集](output/indicators/ic_distribution_train.png)
+![IC分布-训练集](../output/indicators/ic_distribution_train.png)
 
-![IC分布-验证集](output/indicators/ic_distribution_val.png)
+![IC分布-验证集](../output/indicators/ic_distribution_val.png)
 
-![p值热力图-训练集](output/indicators/pvalue_heatmap_train.png)
+![p值热力图-训练集](../output/indicators/pvalue_heatmap_train.png)
 
 ---
 
@@ -570,11 +570,11 @@ Top-10 IC 中有 9/10 方向一致，1 个（SMA_20_100）发生方向翻转。�
 
 大部分形态的命中率在验证集上出现衰减，说明训练集中的表现可能是过拟合。
 
-![形态出现频率](output/patterns/pattern_counts_train.png)
+![形态出现频率](../output/patterns/pattern_counts_train.png)
 
-![形态前瞻收益率](output/patterns/pattern_forward_returns_train.png)
+![形态前瞻收益率](../output/patterns/pattern_forward_returns_train.png)
 
-![命中率分析](output/patterns/pattern_hit_rate_train.png)
+![命中率分析](../output/patterns/pattern_hit_rate_train.png)
 
 ---
 
@@ -602,13 +602,13 @@ Top-10 IC 中有 9/10 方向一致，1 个（SMA_20_100）发生方向翻转。�
 
 暴涨暴跌状态平均仅持续 1.3 天即回归横盘。暴跌后有 31.9% 概率转为暴涨（反弹）。
 
-![PCA聚类散点图](output/clustering/cluster_pca_k-means.png)
+![PCA聚类散点图](../output/clustering/cluster_pca_k-means.png)
 
-![聚类特征热力图](output/clustering/cluster_heatmap_k-means.png)
+![聚类特征热力图](../output/clustering/cluster_heatmap_k-means.png)
 
-![转移概率矩阵](output/clustering/cluster_transition_matrix.png)
+![转移概率矩阵](../output/clustering/cluster_transition_matrix.png)
 
-![状态时间序列](output/clustering/cluster_state_timeseries.png)
+![状态时间序列](../output/clustering/cluster_state_timeseries.png)
 
 ---
 
@@ -627,9 +627,9 @@ Top-10 IC 中有 9/10 方向一致，1 个（SMA_20_100）发生方向翻转。�
 
 Historical Mean 的 RMSE/RW = 0.998，仅比随机游走好 0.2%，Diebold-Mariano 检验 p=0.152 **不显著**，本质上等同于随机游走。
 
-![预测对比](output/time_series/ts_predictions_comparison.png)
+![预测对比](../output/time_series/ts_predictions_comparison.png)
 
-![方向准确率](output/time_series/ts_direction_accuracy.png)
+![方向准确率](../output/time_series/ts_direction_accuracy.png)
 
 ---
 
@@ -680,13 +680,13 @@ Historical Mean 的 RMSE/RW = 0.998，仅比随机游走好 0.2%，Diebold-Maria
 
 > **注意**: AUC=0.99 部分反映了异常本身的聚集性（异常日前后也是异常的），不等于真正的"事前预测"能力。
 
-![异常标记图](output/anomaly/anomaly_price_chart.png)
+![异常标记图](../output/anomaly/anomaly_price_chart.png)
 
-![特征分布对比](output/anomaly/anomaly_feature_distributions.png)
+![特征分布对比](../output/anomaly/anomaly_feature_distributions.png)
 
-![ROC曲线](output/anomaly/precursor_roc_curve.png)
+![ROC曲线](../output/anomaly/precursor_roc_curve.png)
 
-![特征重要性](output/anomaly/precursor_feature_importance.png)
+![特征重要性](../output/anomaly/precursor_feature_importance.png)
 
 ---
 
@@ -702,7 +702,7 @@ Historical Mean 的 RMSE/RW = 0.998，仅比随机游走好 0.2%，Diebold-Maria
 | 波动率聚集 | GARCH persistence=0.973，绝对收益率ACF 88阶显著 | 可预测波动率 |
 | 波动率长记忆性 | 幂律衰减 d=0.635, p=5.8e-25 | FIGARCH建模 |
 | 单向因果：波动→成交量 | abs_return→volume F=55.19, Bonferroni校正后全显著 | 理解市场微观结构 |
-| 异常事件前兆 | AUC=0.9935，6/12已知事件精确对齐 | 波动率异常预警 |
+| 异常事件前兆 | AUC=0.9935，6/12已知事件精确对齐 | 中等证据（AUC 受异常聚集性膨胀），波动率异常预警 |
 
 #### ⚠️ 中等证据（统计显著但效果有限）
 
@@ -795,7 +795,7 @@ Historical Mean 的 RMSE/RW = 0.998，仅比随机游走好 0.2%，Diebold-Maria
 - **多粒度稳定性**: 1m/5m/15m/1h四个粒度结论高度一致（平均相关系数1.000）
 
 **核心发现**:
-- 日内收益率自相关在亚洲时段为-0.0499，显示微弱的均值回归特征
+- 日内收益率自相关在亚洲时段为-0.0499（绝对值极小，接近噪声水平，需结合样本量和置信区间判断是否具有统计显著性）
 - 各时段收益率差异的Kruskal-Wallis检验显著（p<0.05），时区效应存在
 - **多粒度稳定性极强**（相关系数=1.000），说明日内模式在不同采样频率下保持一致
 
@@ -807,7 +807,7 @@ Historical Mean 的 RMSE/RW = 0.998，仅比随机游走好 0.2%，Diebold-Maria
 
 | 参数 | 估计值 | R² | 解读 |
 |------|--------|-----|------|
-| **Hurst指数H** | **0.4803** | 0.9996 | 略<0.5，微弱均值回归 |
+| **标度指数 H_scaling** | **0.4803** | 0.9996 | 略<0.5，微弱均值回归 |
 | 标度常数c | 0.0362 | — | 日波动率基准 |
 | 波动率跨度比 | 170.5 | — | 从1m到1mo的σ比值 |
 
@@ -833,7 +833,7 @@ Historical Mean 的 RMSE/RW = 0.998，仅比随机游走好 0.2%，Diebold-Maria
 高阶矩（更大波动）的自相关衰减更快，说明大波动后的可预测性更低。
 
 **核心发现**:
-1. **Hurst指数H=0.4803**（R²=0.9996），略低于0.5，显示微弱的均值回归特征
+1. **标度指数 H_scaling=0.4803**（R²=0.9996），略低于0.5，显示微弱的均值回归特征。注意：此处的标度指数衡量的是波动率跨时间尺度的缩放关系 σ(Δt) ∝ (Δt)^H，与第 5 章的 Hurst 指数（衡量收益率序列自相关结构，H_RS≈0.59）含义不同，两者并不矛盾
 2. **1分钟峰度(118.21)是日线峰度(15.65)的7.6倍**，高频数据尖峰厚尾特征极其显著
 3. 波动率跨度达170倍，从1m的0.11%到1mo的19.5%
 4. **标度律拟合优度极高**（R²=0.9996），说明波动率标度关系非常稳健
@@ -860,7 +860,7 @@ RV_t = β₀ + β_d·RV_{t-1} + β_w·RV_{t-1}^{(w)} + β_m·RV_{t-1}^{(m)} + ε
 **核心发现**:
 1. **月尺度RV对次日RV预测贡献最大**（51.7%），远超日尺度（9.4%）
 2. HAR-RV模型R²=9.3%，虽然统计显著但预测力有限
-3. **跳跃检测**: 检测到2,979个显著跳跃事件（占比96.4%），显示价格过程包含大量不连续变动
+3. **跳跃检测**: 检测到2,979个显著跳跃事件（占比96.4%）。极高的检出率表明 BTC 价格过程本质上以不连续跳跃为常态而非例外，也可能反映跳跃检测阈值相对于加密货币市场的高波动率偏低
 4. **已实现偏度/峰度**: 平均已实现偏度≈0，峰度≈0，说明日内收益率分布相对对称但存在尖峰
 
 ---
@@ -869,7 +869,7 @@ RV_t = β₀ + β_d·RV_{t-1} + β_w·RV_{t-1}^{(w)} + β_m·RV_{t-1}^{(m)} + ε
 
 > 信息熵分析模块已加载，等待实际数据验证。
 
-**理论预期**:
+**理论预期（假设值，非实测数据）**:
 | 尺度 | 熵值(bits) | 最大熵 | 归一化熵 | 可预测性 |
 |------|-----------|-------|---------|---------|
 | 1m | ~4.9 | 5.00 | ~0.98 | 极低 |
@@ -896,7 +896,7 @@ RV_t = β₀ + β_d·RV_{t-1} + β_w·RV_{t-1}^{(w)} + β_m·RV_{t-1}^{(m)} + ε
 | 参数 | 估计值 | 解读 |
 |------|-------|------|
 | 尺度σ | 0.028 | 超阈值波动幅度 |
-| 形状ξ | -0.147 | 指数尾部（ξ≈0） |
+| 形状ξ | -0.147 | 有界尾部（ξ<0，GPD 有上界），与 GEV 负向尾部结论一致 |
 
 **多尺度VaR/CVaR（实际回测通过）**:
 | 尺度 | VaR 95% | CVaR 95% | VaR 99% | CVaR 99% | 回测状态 |
@@ -936,8 +936,8 @@ RV_t = β₀ + β_d·RV_{t-1} + β_w·RV_{t-1}^{(w)} + β_m·RV_{t-1}^{(m)} + ε
 | 3d | — | — | — | — | — | — | 1.00 | — |
 | 1w | — | — | — | — | — | — | — | 1.00 |
 
-**平均跨尺度相关系数**: 0.788
-**最高相关对**: 15m-4h (r=1.000)
+**平均跨尺度相关系数**: 0.788（仅基于有数据的尺度对计算）
+**最高相关对**: 15m-4h (r=1.000，该极高值可能由日频对齐聚合导致，非原始 tick 级相关)
 
 **领先滞后分析**:
 - 最优滞后期矩阵显示各尺度间最大滞后为0-5天
@@ -1004,7 +1004,7 @@ RV_t = β₀ + β_d·RV_{t-1} + β_w·RV_{t-1}^{(w)} + β_m·RV_{t-1}^{(m)} + ε
 |---------|---------|---------|---------|
 | **微观结构** | 极低非流动性(Amihud~0)，VPIN=0.20预警崩盘 | ✅ 已验证 | 高频(≤5m) |
 | **日内模式** | 日内U型曲线，各时段差异显著 | ✅ 已验证 | 日内(1h) |
-| **波动率标度** | H=0.4803微弱均值回归，R²=0.9996 | ✅ 已验证 | 全尺度 |
+| **波动率标度** | H_scaling=0.4803（波动率缩放指数，非 Hurst 指数），R²=0.9996 | ✅ 已验证 | 全尺度 |
 | **HAR-RV** | 月RV贡献51.7%，跳跃事件96.4% | ✅ 已验证 | 中高频 |
 | **信息熵** | 细粒度熵更高更难预测 | ⏳ 待验证 | 全尺度 |
 | **极端风险** | 正尾重尾(ξ=+0.12)，负尾有界(ξ=-0.76)，VaR回测通过 | ✅ 已验证 | 日/周 |
@@ -1108,11 +1108,11 @@ RV_t = β₀ + β_d·RV_{t-1} + β_w·RV_{t-1}^{(w)} + β_m·RV_{t-1}^{(m)} + ε
 
 基于日线对数收益率参数（μ=0.000935, σ=0.0361），在几何布朗运动假设下：
 
-**风险中性漂移修正**: E[ln(S_T/S_0)] = (μ - σ²/2) × T = 0.000283/天
+**对数正态中位数修正**（Jensen 不等式修正）: E[ln(S_T/S_0)] = (μ - σ²/2) × T = 0.000283/天
 
 | 时间跨度 | 中位数预期 | -1σ (16%分位) | +1σ (84%分位) | -2σ (2.5%分位) | +2σ (97.5%分位) |
 |---------|-----------|-------------|-------------|-------------|---------------|
-| 6 个月 (183天) | $80,834 | $52,891 | $123,470 | $36,267 | $180,129 |
+| 6 个月 (183天) | $81,057 | $49,731 | $132,130 | $30,502 | $215,266 |
 | 1 年 (365天) | $85,347 | $42,823 | $170,171 | $21,502 | $338,947 |
 | 2 年 (730天) | $94,618 | $35,692 | $250,725 | $13,475 | $664,268 |
 
@@ -1146,7 +1146,7 @@ RV_t = β₀ + β_d·RV_{t-1} + β_w·RV_{t-1}^{(w)} + β_m·RV_{t-1}^{(m)} + ε
 **推演**:
 - 如果按第 3 次减半的轨迹形态（r=0.81），但收益率大幅衰减（0.06x~0.18x 缩减比），第 4 次周期可能已经或接近峰值
 - 第 3 次减半在 ~550 天达到顶点后进入长期下跌（随后的 2022 年熊市），若类比成立，2026Q1-Q2 可能处于"周期后期"
-- **但仅 2 个样本的统计功效极低**（Welch's t 合并 p=0.991），不能依赖此推演
+- **仅 2 个样本的统计功效极低**（Welch's t 合并 p=0.991），此框架仅作叙事参考，不具有数据驱动的预测力
 
 ### 17.6 框架四：马尔可夫状态模型推演
 
@@ -1194,7 +1194,7 @@ RV_t = β₀ + β_d·RV_{t-1} + β_w·RV_{t-1}^{(w)} + β_m·RV_{t-1}^{(m)} + ε
 | 1 年目标 | $130,000 ~ $200,000 | GBM +1σ 区间 + Hurst 趋势持续 |
 | 2 年目标 | $180,000 ~ $350,000 | GBM +1σ~+2σ，幂律上轨 $140K |
 | 触发条件 | 连续突破幂律 95% 上轨 ($119,340) | 历史上 2021 年曾发生 |
-| 概率依据 | 马尔可夫暴涨状态 14.6% × Hurst 趋势延续 98.9% | 但单次暴涨仅持续 1.3 天 |
+| 概率依据 | 参考马尔可夫暴涨状态 14.6% 和 Hurst 趋势延续 98.9%（综合判断，非简单乘积） | 但单次暴涨仅持续 1.3 天 |
 
 **数据支撑**: Hurst H=0.593 表明价格有弱趋势延续性，一旦进入上行通道可能持续。周线 H=0.67 暗示更长周期趋势性更强。但暴涨状态平均仅 1.3 天，需要连续多次暴涨才能实现。
 
@@ -1298,4 +1298,4 @@ RV_t = β₀ + β_d·RV_{t-1} + β_w·RV_{t-1}^{(w)} + β_m·RV_{t-1}^{(m)} + ε
 
 ---
 
-*报告生成日期: 2026-02-03 | 分析代码: [src/](src/) | 图表输出: [output/](output/)*
+*报告生成日期: 2026-02-03 | 分析代码: [src/](../src/) | 图表输出: [output/](../output/)*

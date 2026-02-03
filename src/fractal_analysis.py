@@ -90,16 +90,16 @@ def box_counting_dimension(prices: np.ndarray,
         if num_boxes_per_side < 2:
             continue
 
-        # 盒子大小（在归一化空间中）
-        box_size = 1.0 / num_boxes_per_side
-
-        # 计算每个数据点所在的盒子编号
-        # x方向：时间划分
-        x_box = np.floor(x / box_size).astype(int)
+        # 独立归一化 x 和 y 到盒子网格，避免纵横比失真
+        x_range = x.max() - x.min()
+        y_range = y.max() - y.min()
+        if x_range == 0:
+            x_range = 1.0
+        if y_range == 0:
+            y_range = 1.0
+        x_box = np.floor((x - x.min()) / x_range * (num_boxes_per_side - 1)).astype(int)
+        y_box = np.floor((y - y.min()) / y_range * (num_boxes_per_side - 1)).astype(int)
         x_box = np.clip(x_box, 0, num_boxes_per_side - 1)
-
-        # y方向：价格划分
-        y_box = np.floor(y / box_size).astype(int)
         y_box = np.clip(y_box, 0, num_boxes_per_side - 1)
 
         # 还需要考虑相邻点之间的连线经过的盒子
@@ -120,11 +120,12 @@ def box_counting_dimension(prices: np.ndarray,
             for t in np.linspace(0, 1, steps + 1):
                 xi = x[i] + t * (x[i + 1] - x[i])
                 yi = y[i] + t * (y[i + 1] - y[i])
-                bx = int(np.clip(np.floor(xi / box_size), 0, num_boxes_per_side - 1))
-                by = int(np.clip(np.floor(yi / box_size), 0, num_boxes_per_side - 1))
+                bx = int(np.clip(np.floor((xi - x.min()) / x_range * (num_boxes_per_side - 1)), 0, num_boxes_per_side - 1))
+                by = int(np.clip(np.floor((yi - y.min()) / y_range * (num_boxes_per_side - 1)), 0, num_boxes_per_side - 1))
                 occupied.add((bx, by))
 
         count = len(occupied)
+        box_size = 1.0 / num_boxes_per_side  # 等效盒子大小，用于缩放关系
         if count > 0:
             log_inv_scales.append(np.log(1.0 / box_size))
             log_counts.append(np.log(count))
@@ -337,7 +338,7 @@ def mfdfa_analysis(series: np.ndarray, q_list=None, scales=None) -> Dict:
         包含 hq, q_list, h_list, tau, alpha, f_alpha, multifractal_width
     """
     if q_list is None:
-        q_list = [-5, -4, -3, -2, -1, -0.5, 0.5, 1, 2, 3, 4, 5]
+        q_list = [-5, -4, -3, -2, -1, -0.5, 0, 0.5, 1, 2, 3, 4, 5]
 
     N = len(series)
     if scales is None:
@@ -476,7 +477,7 @@ def multi_timeframe_fractal(df_1h: pd.DataFrame, df_4h: pd.DataFrame, df_1d: pd.
         results[name] = {
             '样本量': len(prices),
             '分形维数': D,
-            'Hurst(从D)': 2.0 - D,
+            'Hurst(从D)': 2.0 - D,  # 仅对自仿射 fBm 严格成立，真实数据为近似值
             '多重分形宽度': multifractal_width,
             'Hurst(MF-DFA,q=2)': h_q2,
         }

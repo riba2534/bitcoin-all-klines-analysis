@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 # 添加项目路径
-sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.hurst_analysis import multi_timeframe_hurst, plot_multi_timeframe, plot_hurst_vs_scale
 
@@ -42,7 +42,7 @@ def test_15_scales():
                   f"平均: {data['平均Hurst']:.4f} | 数据量: {data['数据量']:>7}")
 
         # 生成可视化
-        output_dir = Path("output/hurst_test")
+        output_dir = Path(__file__).parent.parent / "output" / "hurst_test"
         output_dir.mkdir(parents=True, exist_ok=True)
 
         print("\n" + "=" * 70)

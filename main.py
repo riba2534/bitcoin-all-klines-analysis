@@ -88,6 +88,10 @@ def run_single_module(key, df, df_hourly, output_base):
         mod = _import_module(mod_name)
         func = getattr(mod, func_name)
 
+        if needs_hourly and df_hourly is None:
+            print(f"  [{key}] 跳过（需要小时数据但未加载）")
+            return {"status": "skipped", "error": "小时数据未加载", "findings": []}
+
         if needs_hourly:
             result = func(df, df_hourly, module_output)
         else:
@@ -96,7 +100,7 @@ def run_single_module(key, df, df_hourly, output_base):
         if result is None:
             result = {"status": "completed", "findings": []}
 
-        result["status"] = "success"
+        result.setdefault("status", "success")
         print(f"  [{key}] 完成 ✓")
         return result
 

@@ -248,7 +248,14 @@ def test_signal_returns(signal: pd.Series, returns: pd.Series) -> Dict:
     # 用信号值（-1, 0, 1）与未来收益的秩相关
     valid_mask = signal.notna() & returns.notna()
     if valid_mask.sum() >= 30:
-        ic, ic_pval = stats.spearmanr(signal[valid_mask], returns[valid_mask])
+        # 过滤掉无信号（signal=0）的样本，避免稀释真实信号效果
+        sig_valid = signal[valid_mask]
+        ret_valid = returns[valid_mask]
+        nonzero_mask = sig_valid != 0
+        if nonzero_mask.sum() >= 10:  # 信号样本足够则仅对有信号的日期计算
+            ic, ic_pval = stats.spearmanr(sig_valid[nonzero_mask], ret_valid[nonzero_mask])
+        else:
+            ic, ic_pval = stats.spearmanr(sig_valid, ret_valid)
         result['ic'] = ic
         result['ic_pval'] = ic_pval
     else:
@@ -514,6 +521,9 @@ def run_indicators_analysis(df: pd.DataFrame, output_dir: str) -> Dict:
 
     # --- 构建全部信号（在全量数据上计算，避免前导NaN问题） ---
     all_signals = build_all_signals(df['close'])
+    # 注意: 信号在全量数据上计算以避免前导NaN问题。
+    # EMA等递推指标从序列起点开始计算，训练集部分不受验证集数据影响。
+    # 但严格的实盘模拟应在每个时间点仅使用历史数据重新计算指标。
     print(f"\n共构建 {len(all_signals)} 个技术指标信号")
 
     # ============ 训练集评估 ============

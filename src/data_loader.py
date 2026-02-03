@@ -13,12 +13,6 @@ AVAILABLE_INTERVALS = [
     "1d", "3d", "1w", "1mo"
 ]
 
-COLUMNS = [
-    "open_time", "open", "high", "low", "close", "volume",
-    "close_time", "quote_volume", "trades",
-    "taker_buy_volume", "taker_buy_quote_volume", "ignore"
-]
-
 NUMERIC_COLS = [
     "open", "high", "low", "close", "volume",
     "quote_volume", "trades", "taker_buy_volume", "taker_buy_quote_volume"
@@ -27,7 +21,7 @@ NUMERIC_COLS = [
 
 def _adaptive_timestamp(ts_series: pd.Series) -> pd.DatetimeIndex:
     """自适应处理毫秒(13位)和微秒(16位)时间戳"""
-    ts = ts_series.astype(np.int64)
+    ts = pd.to_numeric(ts_series, errors="coerce").astype(np.int64)
     # 16位时间戳(微秒) -> 转为毫秒
     mask = ts > 1e15
     ts = ts.copy()
@@ -91,9 +85,15 @@ def load_klines(
 
     # 时间范围过滤
     if start:
-        df = df[df.index >= pd.Timestamp(start)]
+        try:
+            df = df[df.index >= pd.Timestamp(start)]
+        except ValueError:
+            print(f"[警告] 无效的起始日期 '{start}'，忽略")
     if end:
-        df = df[df.index <= pd.Timestamp(end)]
+        try:
+            df = df[df.index <= pd.Timestamp(end)]
+        except ValueError:
+            print(f"[警告] 无效的结束日期 '{end}'，忽略")
 
     return df
 
@@ -110,6 +110,10 @@ def load_hourly(start: Optional[str] = None, end: Optional[str] = None) -> pd.Da
 
 def validate_data(df: pd.DataFrame, interval: str = "1d") -> dict:
     """数据完整性校验"""
+    if len(df) == 0:
+        return {"rows": 0, "date_range": "N/A", "null_counts": {}, "duplicate_index": 0,
+                "price_range": "N/A", "negative_volume": 0}
+
     report = {
         "rows": len(df),
         "date_range": f"{df.index.min()} ~ {df.index.max()}",

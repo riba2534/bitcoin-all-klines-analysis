@@ -103,6 +103,8 @@ def rs_hurst(series: np.ndarray, min_window: int = 10, max_window: Optional[int]
         log(窗口大小)
     log_rs : np.ndarray
         log(平均R/S值)
+    r_squared : float
+        线性拟合的 R^2 拟合优度
     """
     n = len(series)
     if max_window is None:
@@ -143,12 +145,19 @@ def rs_hurst(series: np.ndarray, min_window: int = 10, max_window: Optional[int]
 
     # 线性回归：log(R/S) = H * log(n) + c
     if len(log_ns) < 3:
-        return 0.5, log_ns, log_rs
+        return 0.5, log_ns, log_rs, 0.0
 
     coeffs = np.polyfit(log_ns, log_rs, 1)
     H = coeffs[0]
 
-    return H, log_ns, log_rs
+    # 计算 R^2 拟合优度
+    predicted = H * log_ns + coeffs[1]
+    ss_res = np.sum((log_rs - predicted) ** 2)
+    ss_tot = np.sum((log_rs - np.mean(log_rs)) ** 2)
+    r_squared = 1 - ss_res / ss_tot if ss_tot > 0 else 0.0
+    print(f"  R/S Hurst 拟合 R² = {r_squared:.4f}")
+
+    return H, log_ns, log_rs, r_squared
 
 
 # ============================================================
@@ -166,7 +175,7 @@ def dfa_hurst(series: np.ndarray) -> float:
     Returns
     -------
     float
-        DFA估计的Hurst指数（DFA指数α，对于分数布朗运动 α = H + 0.5 - 0.5 = H）
+        DFA估计的Hurst指数（对增量过程（对数收益率），DFA 指数 α 近似等于 Hurst 指数 H）
     """
     if HAS_NOLDS:
         # nolds.dfa 返回的是DFA scaling exponent α
@@ -212,11 +221,12 @@ def cross_validate_hurst(series: np.ndarray) -> Dict[str, float]:
     dict
         包含两种方法的Hurst值及其差异
     """
-    h_rs, _, _ = rs_hurst(series)
+    h_rs, _, _, r_squared = rs_hurst(series)
     h_dfa = dfa_hurst(series)
 
     result = {
         'R/S Hurst': h_rs,
+        'R/S R²': r_squared,
         'DFA Hurst': h_dfa,
         '两种方法差异': abs(h_rs - h_dfa),
         '平均值': (h_rs + h_dfa) / 2,
@@ -262,7 +272,7 @@ def rolling_hurst(series: np.ndarray, dates: pd.DatetimeIndex,
         segment = series[start_idx:end_idx]
 
         if method == 'rs':
-            h, _, _ = rs_hurst(segment)
+            h, _, _, _ = rs_hurst(segment)
         elif method == 'dfa':
             h = dfa_hurst(segment)
         else:
@@ -313,7 +323,7 @@ def multi_timeframe_hurst(intervals: List[str] = None) -> Dict[str, Dict[str, fl
                 returns = returns[-100000:]
 
             # R/S分析
-            h_rs, _, _ = rs_hurst(returns)
+            h_rs, _, _, _ = rs_hurst(returns)
             # DFA分析
             h_dfa = dfa_hurst(returns)
 
@@ -593,8 +603,9 @@ def run_hurst_analysis(df: pd.DataFrame, output_dir: str = "output/hurst") -> Di
     print("【1】R/S (Rescaled Range) 分析")
     print("-" * 50)
 
-    h_rs, log_ns, log_rs = rs_hurst(returns_arr)
+    h_rs, log_ns, log_rs, r_squared = rs_hurst(returns_arr)
     results['R/S Hurst'] = h_rs
+    results['R/S R²'] = r_squared
 
     print(f"  R/S Hurst指数: {h_rs:.4f}")
     print(f"  解读: {interpret_hurst(h_rs)}")

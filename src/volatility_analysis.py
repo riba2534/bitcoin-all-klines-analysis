@@ -202,8 +202,10 @@ def compare_garch_models(returns: pd.Series) -> dict:
 
     # --- GARCH(1,1) ---
     model_garch = arch_model(r_pct, vol='Garch', p=1, q=1,
-                              mean='Constant', dist='Normal')
+                              mean='Constant', dist='t')
     res_garch = model_garch.fit(disp='off')
+    if res_garch.convergence_flag != 0:
+        print(f"  [警告] GARCH(1,1) 模型未收敛 (flag={res_garch.convergence_flag})")
     results['GARCH'] = {
         'params': dict(res_garch.params),
         'aic': res_garch.aic,
@@ -215,8 +217,10 @@ def compare_garch_models(returns: pd.Series) -> dict:
 
     # --- EGARCH(1,1) ---
     model_egarch = arch_model(r_pct, vol='EGARCH', p=1, q=1,
-                               mean='Constant', dist='Normal')
+                               mean='Constant', dist='t')
     res_egarch = model_egarch.fit(disp='off')
+    if res_egarch.convergence_flag != 0:
+        print(f"  [警告] EGARCH(1,1) 模型未收敛 (flag={res_egarch.convergence_flag})")
     # EGARCH的gamma参数反映杠杆效应（负值表示负收益增大波动率）
     egarch_params = dict(res_egarch.params)
     results['EGARCH'] = {
@@ -232,8 +236,10 @@ def compare_garch_models(returns: pd.Series) -> dict:
     # --- GJR-GARCH(1,1) ---
     # GJR-GARCH 在 arch 库中通过 vol='Garch', o=1 实现
     model_gjr = arch_model(r_pct, vol='Garch', p=1, o=1, q=1,
-                            mean='Constant', dist='Normal')
+                            mean='Constant', dist='t')
     res_gjr = model_gjr.fit(disp='off')
+    if res_gjr.convergence_flag != 0:
+        print(f"  [警告] GJR-GARCH(1,1) 模型未收敛 (flag={res_gjr.convergence_flag})")
     gjr_params = dict(res_gjr.params)
     results['GJR-GARCH'] = {
         'params': gjr_params,

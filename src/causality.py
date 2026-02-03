@@ -17,7 +17,7 @@ import warnings
 from pathlib import Path
 from typing import Optional, List, Tuple, Dict
 
-from statsmodels.tsa.stattools import grangercausalitytests
+from statsmodels.tsa.stattools import grangercausalitytests, adfuller
 
 from src.data_loader import load_hourly
 from src.preprocessing import log_returns, add_derived_features
@@ -46,7 +46,20 @@ TEST_LAGS = [1, 2, 3, 5, 10]
 
 
 # ============================================================
-# 2. 单对 Granger 因果检验
+# 2. ADF 平稳性检验辅助函数
+# ============================================================
+
+def _check_stationarity(series, name, alpha=0.05):
+    """ADF 平稳性检验，非平稳则取差分"""
+    result = adfuller(series.dropna(), autolag='AIC')
+    if result[1] > alpha:
+        print(f"  [注意] {name} 非平稳 (ADF p={result[1]:.4f})，使用差分序列")
+        return series.diff().dropna(), True
+    return series, False
+
+
+# ============================================================
+# 3. 单对 Granger 因果检验
 # ============================================================
 
 def granger_test_pair(
@@ -86,6 +99,15 @@ def granger_test_pair(
     if len(data) < max_lag + 20:
         print(f"  [警告] {cause} → {effect}: 样本量不足 ({len(data)})，跳过")
         return []
+
+    # ADF 平稳性检验，非平稳则取差分
+    effect_series, effect_diffed = _check_stationarity(data[effect], effect)
+    cause_series, cause_diffed = _check_stationarity(data[cause], cause)
+    if effect_diffed or cause_diffed:
+        data = pd.concat([effect_series, cause_series], axis=1).dropna()
+        if len(data) < max_lag + 20:
+            print(f"  [警告] {cause} → {effect}: 差分后样本量不足 ({len(data)})，跳过")
+            return []
 
     results = []
     try:
@@ -578,14 +600,10 @@ def run_causality_analysis(
 
     # --- 因果关系网络图 ---
     print("\n>>> [4/4] 绘制因果关系网络图...")
-    # 使用所有结果（含跨时间尺度）
+    # 使用所有结果（含跨时间尺度），直接使用各组已做的 Bonferroni 校正结果，
+    # 不再重复校正（各组检验已独立校正，合并后再校正会导致双重惩罚）
     if not all_results.empty:
-        # 重新做一次 Bonferroni 校正（因为合并后总检验数增加）
-        all_corrected = apply_bonferroni(all_results.drop(
-            columns=['bonferroni_alpha', 'significant_raw', 'significant_corrected'],
-            errors='ignore'
-        ), alpha=0.05)
-        plot_causal_network(all_corrected, output_dir)
+        plot_causal_network(all_results, output_dir)
     else:
         print("  [警告] 无可用结果，跳过网络图")
 

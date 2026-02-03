@@ -433,8 +433,16 @@ def analyze_pattern_returns(pattern_signal: pd.Series, fwd_returns: pd.DataFrame
                 # 看跌：收益<0 为命中
                 hits = (ret_1d < 0).sum()
             else:
-                # 中性：取绝对值较大方向的准确率
-                hits = max((ret_1d > 0).sum(), (ret_1d < 0).sum())
+                # 中性形态不做方向性预测，报告平均绝对收益幅度
+                hit_rate = np.nan  # 不适用方向性命中率
+                result['hit_rate'] = hit_rate
+                result['hit_count'] = 0
+                result['hit_n'] = int(len(ret_1d))
+                result['avg_abs_return'] = ret_1d.abs().mean()
+                result['wilson_ci_lower'] = np.nan
+                result['wilson_ci_upper'] = np.nan
+                result['binom_pval'] = np.nan
+                return result
 
             n = len(ret_1d)
             hit_rate = hits / n

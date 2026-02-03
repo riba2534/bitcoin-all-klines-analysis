@@ -104,8 +104,9 @@ def compute_fft_spectrum(
     freqs_pos = freqs[pos_mask]
     yf_pos = yf[pos_mask]
 
-    # 功率谱密度：|FFT|^2 / (N * 窗函数能量)
-    power = (np.abs(yf_pos) ** 2) / (n * window_energy)
+    # 功率谱密度：单边谱乘2，加入采样频率 fs 归一化
+    fs = 1.0 / sampling_period_days  # 采样频率 (cycles/day)
+    power = 2.0 * (np.abs(yf_pos) ** 2) / (n * fs * window_energy)
 
     # 对应周期
     periods = 1.0 / freqs_pos
@@ -122,6 +123,7 @@ def ar1_red_noise_spectrum(
     freqs: np.ndarray,
     sampling_period_days: float,
     confidence_percentile: float = 95.0,
+    power: Optional[np.ndarray] = None,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
     基于AR(1)模型估算红噪声理论功率谱
@@ -139,6 +141,8 @@ def ar1_red_noise_spectrum(
         采样周期
     confidence_percentile : float
         置信水平百分位数（默认95%）
+    power : np.ndarray, optional
+        信号功率谱，用于经验缩放使理论谱均值匹配信号谱均值
 
     Returns
     -------
@@ -165,7 +169,11 @@ def ar1_red_noise_spectrum(
     denominator = 1 - 2 * rho * cos_term + rho ** 2
     noise_mean = s0 / denominator
 
-    # 归一化使均值与信号功率谱均值匹配（经验缩放）
+    # 经验缩放：使理论谱均值匹配信号谱均值
+    if power is not None and np.mean(noise_mean) > 0:
+        scale_factor_empirical = np.mean(power) / np.mean(noise_mean)
+        noise_mean = noise_mean * scale_factor_empirical
+
     # 在chi-squared分布下，FFT功率近似服从指数分布（自由度2）
     # 95%置信上界 = 均值 * chi2_ppf(0.95, 2) / 2 ≈ 均值 * 2.996
     from scipy.stats import chi2
@@ -751,7 +759,8 @@ def _analyze_single_timeframe(
 
     # AR(1)红噪声基线
     noise_mean, noise_threshold = ar1_red_noise_spectrum(
-        log_ret, freqs, sampling_period_days, confidence_percentile=95.0
+        log_ret, freqs, sampling_period_days, confidence_percentile=95.0,
+        power=power,
     )
 
     # 峰值检测

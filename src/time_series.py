@@ -245,9 +245,8 @@ def _run_prophet(train_df: pd.DataFrame, val_df: pd.DataFrame) -> Dict:
 
     # 转换为对数收益率预测（与其他模型对齐）
     pred_close = forecast['yhat'].values
-    # 用前一天的真实收盘价计算预测收益率
-    # 第一天用训练集最后一天的价格
-    prev_close = np.concatenate([[train_df['close'].iloc[-1]], val_df['close'].values[:-1]])
+    # 使用递推方式：首个prev_close用训练集末尾真实价格，后续用模型预测价格
+    prev_close = np.concatenate([[train_df['close'].iloc[-1]], pred_close[:-1]])
     pred_returns = np.log(pred_close / prev_close)
 
     print(f"  预测完成，验证期: {val_df.index[0]} ~ {val_df.index[-1]}")

@@ -69,11 +69,11 @@ def ensure_dir(path):
 
 EVIDENCE_CRITERIA = """
 "真正有规律" 判定标准（必须同时满足）：
-  1. FDR校正后 p < 0.05
-  2. 排列检验 p < 0.01（如适用）
-  3. 测试集上效果方向一致且显著
-  4. >80% bootstrap子样本中成立（如适用）
-  5. Cohen's d > 0.2 或经济意义显著
+  1. FDR校正后 p < 0.05（+2分）
+  2. p值极显著 (< 0.01) 额外加分（+1分）
+  3. 测试集上效果方向一致且显著（+2分）
+  4. >80% bootstrap子样本中成立（如适用）（+1分）
+  5. Cohen's d > 0.2 或经济意义显著（+1分）
   6. 有合理的经济/市场直觉解释
 """
 
@@ -111,7 +111,7 @@ def score_evidence(result: Dict) -> Dict:
         if significant:
             s += 2
         if p_value is not None and p_value < 0.01:
-            s += 1
+            s += 1  # p值极显著（补充严格性奖励）
         if effect_size is not None and abs(effect_size) > 0.2:
             s += 1
         if f.get("test_set_consistent", False):

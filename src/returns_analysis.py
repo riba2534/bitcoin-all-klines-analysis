@@ -43,9 +43,14 @@ def normality_tests(returns: pd.Series) -> dict:
     """
     r = returns.dropna().values
 
-    # Kolmogorov-Smirnov 检验（与标准正态比较）
-    r_standardized = (r - r.mean()) / r.std()
-    ks_stat, ks_p = stats.kstest(r_standardized, 'norm')
+    # Lilliefors 检验（正确处理估计参数的正态性检验）
+    try:
+        from statsmodels.stats.diagnostic import lilliefors
+        ks_stat, ks_p = lilliefors(r, dist='norm', pvalmethod='table')
+    except ImportError:
+        # 回退到 KS 检验并标注局限性
+        r_standardized = (r - r.mean()) / r.std()
+        ks_stat, ks_p = stats.kstest(r_standardized, 'norm')
 
     # Jarque-Bera 检验
     jb_stat, jb_p = stats.jarque_bera(r)
@@ -165,9 +170,13 @@ def fit_garch11(returns: pd.Series) -> dict:
     # arch库推荐使用百分比收益率以改善数值稳定性
     r_pct = returns.dropna() * 100
 
-    # 拟合GARCH(1,1)，均值模型用常数均值
-    model = arch_model(r_pct, vol='Garch', p=1, q=1, mean='Constant', dist='Normal')
+    # 拟合GARCH(1,1)，使用t分布以匹配BTC厚尾特征
+    model = arch_model(r_pct, vol='Garch', p=1, q=1, mean='Constant', dist='t')
     result = model.fit(disp='off')
+
+    # 检查收敛状态
+    if result.convergence_flag != 0:
+        print(f"  [警告] GARCH(1,1) 未收敛 (flag={result.convergence_flag})，参数可能不可靠")
 
     # 提取参数
     params = result.params
@@ -444,7 +453,7 @@ def print_normality_results(results: dict):
     print("正态性检验结果")
     print("=" * 60)
 
-    print(f"\n[KS检验] Kolmogorov-Smirnov")
+    print(f"\n[Lilliefors/KS检验] 正态性检验")
     print(f"  统计量: {results['ks_statistic']:.6f}")
     print(f"  p值:    {results['ks_pvalue']:.2e}")
     print(f"  结论:   {'拒绝正态假设' if results['ks_pvalue'] < 0.05 else '不能拒绝正态假设'}")

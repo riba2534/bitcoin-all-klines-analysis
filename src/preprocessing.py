@@ -21,10 +21,15 @@ def detrend_log_diff(prices: pd.Series) -> pd.Series:
 
 
 def detrend_linear(series: pd.Series) -> pd.Series:
-    """线性去趋势"""
-    x = np.arange(len(series))
-    coeffs = np.polyfit(x, series.values, 1)
-    trend = np.polyval(coeffs, x)
+    """线性去趋势（自动忽略NaN）"""
+    clean = series.dropna()
+    if len(clean) < 2:
+        return series - series.mean()
+    x = np.arange(len(clean))
+    coeffs = np.polyfit(x, clean.values, 1)
+    # 对完整索引计算趋势
+    x_full = np.arange(len(series))
+    trend = np.polyval(coeffs, x_full)
     return pd.Series(series.values - trend, index=series.index)
 
 
@@ -35,9 +40,9 @@ def hp_filter(series: pd.Series, lamb: float = 1600) -> tuple:
     return cycle, trend
 
 
-def rolling_volatility(returns: pd.Series, window: int = 30) -> pd.Series:
+def rolling_volatility(returns: pd.Series, window: int = 30, periods_per_year: int = 365) -> pd.Series:
     """滚动波动率（年化）"""
-    return returns.rolling(window=window).std() * np.sqrt(365)
+    return returns.rolling(window=window).std() * np.sqrt(periods_per_year)
 
 
 def realized_volatility(returns: pd.Series, window: int = 30) -> pd.Series:
@@ -51,7 +56,11 @@ def taker_buy_ratio(df: pd.DataFrame) -> pd.Series:
 
 
 def add_derived_features(df: pd.DataFrame) -> pd.DataFrame:
-    """添加常用衍生特征列"""
+    """添加常用衍生特征列
+
+    注意: 返回的 DataFrame 前30行部分列包含 NaN（由滚动窗口计算导致），
+    下游模块应根据需要自行处理。
+    """
     out = df.copy()
     out["log_return"] = log_returns(df["close"])
     out["simple_return"] = simple_returns(df["close"])
@@ -69,8 +78,11 @@ def add_derived_features(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def standardize(series: pd.Series) -> pd.Series:
-    """Z-score标准化"""
-    return (series - series.mean()) / series.std()
+    """Z-score标准化（零方差时返回全零序列）"""
+    std = series.std()
+    if std == 0 or np.isnan(std):
+        return pd.Series(0.0, index=series.index)
+    return (series - series.mean()) / std
 
 
 def winsorize(series: pd.Series, lower: float = 0.01, upper: float = 0.99) -> pd.Series:

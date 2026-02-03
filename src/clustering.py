@@ -250,24 +250,34 @@ def _interpret_clusters(df_clean: pd.DataFrame, labels: np.ndarray,
     print(f"{method_name} 聚类特征均值")
     print("=" * 60)
 
-    # 自动标注状态
+    # 自动标注状态（基于数据分布的自适应阈值）
     state_labels = {}
+
+    # 计算自适应阈值：基于聚类均值的标准差
+    lr_values = cluster_means["log_return"]
+    abs_r_values = cluster_means["abs_return"]
+    lr_std = lr_values.std() if len(lr_values) > 1 else 0.02
+    abs_r_std = abs_r_values.std() if len(abs_r_values) > 1 else 0.02
+    high_lr_threshold = max(0.005, lr_std)  # 至少 0.5% 作为下限
+    high_abs_threshold = max(0.005, abs_r_std)
+    mild_lr_threshold = max(0.002, high_lr_threshold * 0.25)
+
     for cid in cluster_means.index:
         row = cluster_means.loc[cid]
         lr = row["log_return"]
         vol = row["vol_7d"]
         abs_r = row["abs_return"]
 
-        # 基于收益率和波动率的规则判断
-        if lr > 0.02 and abs_r > 0.02:
+        # 基于自适应阈值的规则判断
+        if lr > high_lr_threshold and abs_r > high_abs_threshold:
             label = "surge"
-        elif lr < -0.02 and abs_r > 0.02:
+        elif lr < -high_lr_threshold and abs_r > high_abs_threshold:
             label = "crash"
-        elif lr > 0.005:
+        elif lr > mild_lr_threshold:
             label = "mild_up"
-        elif lr < -0.005:
+        elif lr < -mild_lr_threshold:
             label = "mild_down"
-        elif abs_r > 0.015 or vol > cluster_means["vol_7d"].median() * 1.5:
+        elif abs_r > high_abs_threshold * 0.75 or vol > cluster_means["vol_7d"].median() * 1.5:
             label = "high_vol"
         else:
             label = "sideways"
