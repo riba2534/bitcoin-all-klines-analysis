@@ -18,9 +18,10 @@
 ```
 btc_price_anany/
 ├── main.py                 # CLI 入口
+├── download_data.py        # 数据下载脚本
 ├── requirements.txt        # Python 依赖
 ├── LICENSE                 # MIT 许可证
-├── data/                   # 15 个 BTC/USDT K线 CSV（1m ~ 1M）
+├── data/                   # 15 个 BTC/USDT K线 CSV（需下载）
 ├── src/                    # 30 个分析与工具模块
 │   ├── data_loader.py      # 数据加载与校验
 │   ├── preprocessing.py    # 衍生特征工程
@@ -44,8 +45,8 @@ btc_price_anany/
 ### 安装
 
 ```bash
-git clone https://github.com/riba2534/btc_price_anany.git
-cd btc_price_anany
+git clone https://github.com/riba2534/bitcoin-all-klines-analysis.git
+cd bitcoin-all-klines-analysis
 pip install -r requirements.txt
 ```
 
@@ -85,13 +86,23 @@ python main.py --start 2020-01-01 --end 2025-12-31
 | `btcusdt_1w.csv` | 1 周 | ~450 |
 | `btcusdt_1mo.csv` | 1 月 | ~100 |
 
-全部数据来源于 Binance 公开 API，时间范围 2017-08 至 2026-02。
+全部数据来源于 Binance 公开 API，时间范围 2017-08-17（BTCUSDT 上线日）至今。
 
-> **数据未包含在仓库中**，请从 Binance 官方数据源下载后放入 `data/` 目录：
+> **数据未包含在仓库中**，请使用内置脚本一键下载：
 >
-> - K 线数据下载页面：<https://data.binance.vision/?prefix=data/spot/daily/klines/BTCUSDT/1m/>
-> - 将 URL 中的 `1m` 替换为所需粒度（`3m`、`5m`、`15m`、`30m`、`1h`、`2h`、`4h`、`6h`、`8h`、`12h`、`1d`、`3d`、`1w`、`1mo`）即可下载对应时间粒度的数据
-> - 下载后合并为单个 CSV 文件，命名格式：`btcusdt_{interval}.csv`，放入 `data/` 目录
+> ```bash
+> # 下载全部 15 个粒度（约需 30-60 分钟，支持断点续传）
+> python download_data.py
+>
+> # 只下载指定粒度
+> python download_data.py 1d 1h 4h
+>
+> # 查看可用粒度
+> python download_data.py --list
+> ```
+>
+> 也可从 Binance 官方手动下载：<https://data.binance.vision/?prefix=data/spot/daily/klines/BTCUSDT/1m/>
+> （将 URL 中的 `1m` 替换为所需粒度即可）
 
 ## 分析模块
 
