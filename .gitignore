@@ -33,20 +33,10 @@ htmlcov/
 # Data files (download from Binance, see README)
 data/
 
-# Runtime generated output (tracked baseline images are in output/)
+# Runtime generated JSON/TXT (images are tracked)
 output/all_results.json
-output/evidence_dashboard.png
 output/综合结论报告.txt
-output/price_overview.png
 output/hurst_test/
-
-# New analysis module outputs
-output/bottom_prediction/
-output/ma_support/
-output/fibonacci/
-output/drawdown/
-output/extreme/
-output/cross_tf/
 
 *.tmp
 *.bak
