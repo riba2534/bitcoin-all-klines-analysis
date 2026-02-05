@@ -61,6 +61,10 @@ MODULE_REGISTRY = OrderedDict([
     ("extreme",        ("极端值分析",            "extreme_value",         "run_extreme_value_analysis", False)),
     ("cross_tf",       ("跨尺度关联",            "cross_timeframe",       "run_cross_timeframe_analysis", False)),
     ("momentum_rev",   ("动量均值回归",          "momentum_reversion",    "run_momentum_reversion_analysis", False)),
+    # === 新增4个底部预测相关模块 ===
+    ("ma_support",     ("200周均线支撑",         "ma_support_analysis",   "run_ma_support_analysis",   False)),
+    ("fibonacci",      ("斐波那契回撤",          "fibonacci_analysis",    "run_fibonacci_analysis",    False)),
+    ("drawdown",       ("历史跌幅分析",          "drawdown_analysis",     "run_drawdown_analysis",     False)),
 ])
 
 
@@ -184,7 +188,26 @@ def main():
             all_results[key] = result
         print(f"  耗时: {elapsed:.1f}s")
 
-    # ── 4. 生成综合报告 ──────────────────────────────────
+    # ── 4. 运行综合底部预测 ─────────────────────────────
+    print(f"\n{'='*60}")
+    print("  运行综合底部预测")
+    print(f"{'='*60}")
+
+    try:
+        from src.bottom_prediction import run_bottom_prediction
+        bottom_output = str(OUTPUT_DIR / "bottom_prediction")
+        Path(bottom_output).mkdir(parents=True, exist_ok=True)
+        t0 = time.time()
+        bottom_result = run_bottom_prediction(df, all_results, bottom_output)
+        elapsed = time.time() - t0
+        all_results["bottom_prediction"] = bottom_result
+        timings["bottom_prediction"] = elapsed
+        print(f"  综合底部预测耗时: {elapsed:.1f}s")
+    except Exception as e:
+        print(f"  综合底部预测失败: {e}")
+        traceback.print_exc()
+
+    # ── 5. 生成综合报告 ──────────────────────────────────
     print(f"\n{'='*60}")
     print("  生成综合分析报告")
     print(f"{'='*60}")
@@ -197,7 +220,7 @@ def main():
     # 综合仪表盘
     dashboard_result = generate_summary_dashboard(all_results, str(OUTPUT_DIR))
 
-    # ── 5. 打印执行摘要 ──────────────────────────────────
+    # ── 6. 打印执行摘要 ──────────────────────────────────
     print(f"\n{'='*60}")
     print("  执行摘要")
     print(f"{'='*60}")

@@ -102,11 +102,19 @@ def score_evidence(result: Dict) -> Dict:
 
     for f in findings:
         s = 0
-        name = f.get("name", "未命名")
-        p_value = f.get("p_value")
-        effect_size = f.get("effect_size")
-        significant = f.get("significant", False)
-        description = f.get("description", "")
+        # 兼容字符串类型的 findings（简单描述）
+        if isinstance(f, str):
+            name = f[:30] if len(f) > 30 else f
+            p_value = None
+            effect_size = None
+            significant = False
+            description = f
+        else:
+            name = f.get("name", "未命名")
+            p_value = f.get("p_value")
+            effect_size = f.get("effect_size")
+            significant = f.get("significant", False)
+            description = f.get("description", "")
 
         if significant:
             s += 2
@@ -114,9 +122,9 @@ def score_evidence(result: Dict) -> Dict:
             s += 1  # p值极显著（补充严格性奖励）
         if effect_size is not None and abs(effect_size) > 0.2:
             s += 1
-        if f.get("test_set_consistent", False):
+        if isinstance(f, dict) and f.get("test_set_consistent", False):
             s += 2
-        if f.get("bootstrap_robust", False):
+        if isinstance(f, dict) and f.get("bootstrap_robust", False):
             s += 1
 
         total_score += s
